@@ -225,8 +225,8 @@ function findButtonByText(text, container) {
  * @returns {object} 包含 state 及必要附属状态（如星星数、是否可以出击等）的对象
  */
 function detectState() {
-  const shell = document.querySelector('.raid-shell');
-  if (!shell) return { state: 'UNKNOWN' }; // 未检测到 Raid 容器界面
+  // 容错兜底：若未找到主容器 .raid-shell，则降级使用 document.body 确保检测能继续进行
+  const shell = document.querySelector('.raid-shell') || document.body;
 
   // 1) 优先检测模态弹框（它们层级最高，会覆盖在基础容器之上）
   // 检查胜利/失败结算弹框
