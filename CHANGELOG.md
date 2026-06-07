@@ -1,5 +1,17 @@
 # Agentank Raid Helper — 版本历史
 
+## v2.1.2 (2026-06-07) — 唯一真实模态框 ID 合并热修复
+
+> 🎯 目标：彻底修复因检测不存在的 `raidChoiceModal` 和 `raidSettlementModal` ID，导致状态机无法识别强化技能选择框并卡死在 `BATTLE`（战斗中）的系统性 Bug
+
+### 🛠️ Bug 修复与规范对齐
+
+- **合并模态框 ID 检测**：依据真实网页 HTML，将选择奖励与结算的检测合并至唯一真实的元素 ID：**`raidRewardModal`**。
+- **废弃不存在的 DOM ID**：在 content.js 状态检测、诊断日志、以及 GEMINI.md 文档表格中，彻底移除并废弃了 `raidChoiceModal` 和 `raidSettlementModal` 这两个虚无的 ID。
+- **全方位版本同步**：版本步进至 `v2.1.2`，并在 manifest、组件以及文档中同步刷新。
+
+---
+
 ## v2.1.1 (2026-06-07) — 强化选择与结算弹框物理可见性兜底热修复
 
 > 🎯 目标：彻底修复在挑战胜利并弹出技能三选一强化选择框时，因模态框本身的 DOM 隐藏状态判定偏差导致逻辑被卡在 `BATTLE`（战斗中）的死锁问题

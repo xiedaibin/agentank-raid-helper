@@ -19,7 +19,7 @@
 
 ```
 agentraid/
-├── manifest.json       # 插件配置文件 (MV3, 版本号 2.1.1)
+├── manifest.json       # 插件配置文件 (MV3, 版本号 2.1.2)
 ├── content.js          # 核心自动化状态机引擎 (注入页面的脚本)
 ├── popup.html          # 插件仪表盘面板 UI
 ├── popup.js            # 仪表盘数据同步与控制逻辑
@@ -67,8 +67,7 @@ stateDiagram-v2
 | **打开仓库** | `$('#raidWarehouseBtn')` | `document.querySelector('.raid-home-view .raid-secondary')` 或查找包含"打开仓库"文本的按钮 | 进入仓库流程的入口，真实 DOM 无 ID |
 | **开始确认弹框** | `$('#raidStartModal')` | `document.querySelector('#raidStartModal')` | 坦克选择与出击确认弹框 |
 | **确认框中开始按钮** | `$('#raidStartConfirmBtn')` | 查找文本包含 "开始游戏" 或 "进入地图" 的按钮 | 确认并扣星进入地图 |
-| **结算弹框** | `$('#raidSettlementModal')` | - | 包含层数胜利及战败OK按钮的弹框 |
-| **选择强化技能弹框** | `$('#raidChoiceModal')` | - | 三选一强化芯片选择的弹框 |
+| **选择强化/结算弹框** | `$('#raidRewardModal')` | - | 包含层数胜利选强化及战败确定按钮的唯一弹框 |
 | **失败确认/OK按钮** | `$('#raidLossConfirmBtn')` | 查找文本包含 "确定" 或 "OK" 的按钮 | 失败后的确认按钮 |
 | **撤离并保存** | `$('#raidEscapeBtn')` | 查找文本包含 "撤离并保存" 的按钮 | 撤退并存盘结算 |
 | **返回出击 (仓库中)** | - | 查找文本 "返回出击" 或 `.raid-warehouse-back` | 返回大厅 |

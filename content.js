@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.1.1
+// Agentank Raid Helper — 状态机自动化引擎 v2.1.2
 // ============================================================
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
@@ -230,33 +230,24 @@ function detectState() {
   const shellClasses = Array.from(shell.classList).join(', ');
 
   // 1) 优先检测模态弹框（它们层级最高，会覆盖在基础容器之上）
-  // 检查胜利/失败结算弹框
-  const settlementModal = $('raidSettlementModal');
-  let settlementShowing = isModalShowing(settlementModal);
+  // 检查唯一真实的胜利/失败结算弹框 raidRewardModal
+  const rewardModal = $('raidRewardModal');
+  let rewardShowing = isModalShowing(rewardModal);
 
-  // 检查选择奖励强化弹框
-  const choiceModal = $('raidChoiceModal');
-  let choiceShowing = isModalShowing(choiceModal);
-
-  // 兜底一：如果页面上已经显示了可见的三选一强化按钮，强行认为 choiceModal 处于显示状态
+  // 兜底一：如果页面上已经显示了可见的三选一强化按钮，强行认为 rewardModal 处于显示状态
   const firstChoice = document.querySelector('.raid-choice');
-  if (!choiceShowing && firstChoice && isVisible(firstChoice)) {
-    choiceShowing = true;
+  if (!rewardShowing && firstChoice && isVisible(firstChoice)) {
+    rewardShowing = true;
   }
 
-  // 兜底二：如果页面上显示了失败确认按钮，强行认为 settlementModal 处于显示状态
+  // 兜底二：如果页面上显示了失败确认按钮，强行认为 rewardModal 处于显示状态
   const fallbackLossBtn = $('raidLossConfirmBtn');
-  if (!settlementShowing && fallbackLossBtn && isVisible(fallbackLossBtn)) {
-    settlementShowing = true;
+  if (!rewardShowing && fallbackLossBtn && isVisible(fallbackLossBtn)) {
+    rewardShowing = true;
   }
 
-  if (settlementShowing) {
-    const modal = settlementModal || (fallbackLossBtn && fallbackLossBtn.closest('.raid-modal')) || document.body;
-    return detectRewardModalState(modal);
-  }
-
-  if (choiceShowing) {
-    const modal = choiceModal || (firstChoice && firstChoice.closest('.raid-modal')) || document.body;
+  if (rewardShowing) {
+    const modal = rewardModal || (firstChoice && firstChoice.closest('.raid-modal')) || (fallbackLossBtn && fallbackLossBtn.closest('.raid-modal')) || document.body;
     return detectRewardModalState(modal);
   }
 
@@ -315,9 +306,7 @@ function detectState() {
   });
   console.warn(`[Raid Helper Debug] detectState无法匹配任何已知状态。诊断信息：
   - shell classList: [${shellClasses}]
-  - settlementModal显示: ${settlementShowing}
-  - choiceModal显示: ${choiceShowing}
-  - startModal显示: ${startShowing}
+  - rewardModal显示: ${rewardShowing}
   - 页面可见按钮: ${JSON.stringify(visibleButtons)}`);
 
   return { state: 'UNKNOWN' }; // 未知态
@@ -619,13 +608,12 @@ async function processAutomation() {
       log('处于战斗中，等待关卡挑战结果...', 'state');
 
       // 诊断：为什么没有匹配到技能选择弹框？
-      const cModal = $('raidChoiceModal');
-      const sModal = $('raidSettlementModal');
+      const rModal = $('raidRewardModal');
       const firstChoice = document.querySelector('.raid-choice');
       console.log(`[Raid Helper Debug] Battle状态诊断:
-        - raidChoiceModal存在: ${!!cModal}
-        - raidChoiceModal可见性(isModalShowing): ${cModal ? isModalShowing(cModal) : 'N/A'}
-        - raidChoiceModal.offsetWidth: ${cModal ? cModal.offsetWidth : 'N/A'}
+        - raidRewardModal存在: ${!!rModal}
+        - raidRewardModal可见性(isModalShowing): ${rModal ? isModalShowing(rModal) : 'N/A'}
+        - raidRewardModal.offsetWidth: ${rModal ? rModal.offsetWidth : 'N/A'}
         - 页面中.raid-choice选项存在: ${!!firstChoice}
         - .raid-choice选项可见性(isVisible): ${firstChoice ? isVisible(firstChoice) : 'N/A'}
       `);
@@ -853,7 +841,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.1.1</div>
+      <div class="version-tag">v2.1.2</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
