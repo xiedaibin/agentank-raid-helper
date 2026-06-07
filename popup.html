@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agentank Raid Helper</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="logo-glow"></span>
+        <h1 class="logo-text">Agentank <span>Raid</span></h1>
+      </div>
+      <div class="version-tag">v2.0.0</div>
+    </header>
+
+    <!-- Main Status Card -->
+    <div class="status-card" id="status-card">
+      <div class="status-indicator">
+        <span class="pulse-dot idle" id="status-dot"></span>
+        <span class="status-text" id="status-text">未运行</span>
+      </div>
+      
+      <!-- Master Switch -->
+      <div class="master-switch-container">
+        <span class="switch-label">主开关</span>
+        <label class="switch">
+          <input type="checkbox" id="master-switch">
+          <span class="slider round"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Game State Card -->
+    <section class="section">
+      <h2 class="section-title">实时状态</h2>
+      <div class="state-card">
+        <div class="state-row">
+          <span class="state-label">当前阶段</span>
+          <span class="state-value" id="current-state">—</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">当前层数</span>
+          <span class="state-value highlight" id="current-layer">0</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">⭐ 星星</span>
+          <span class="state-value" id="current-stars">0</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">✨ 星屑</span>
+          <span class="state-value" id="current-dust">0</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">最近操作</span>
+          <span class="state-value small" id="last-action">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Enhancements Display -->
+    <section class="section">
+      <h2 class="section-title">当前强化</h2>
+      <div class="enhance-list" id="enhance-list">
+        <span class="enhance-empty">暂无强化</span>
+      </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="section">
+      <h2 class="section-title">战绩统计</h2>
+      <div class="stats-container">
+        <div class="stat-box">
+          <span class="stat-val" id="stat-runs">0</span>
+          <span class="stat-lbl">总出击</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="stat-wins">0</span>
+          <span class="stat-lbl">胜利层</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="stat-evacuations">0</span>
+          <span class="stat-lbl">撤离次</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="stat-losses">0</span>
+          <span class="stat-lbl">失败次</span>
+        </div>
+      </div>
+      <div class="stats-container" style="margin-top: 8px;">
+        <div class="stat-box">
+          <span class="stat-val" id="stat-clicks">0</span>
+          <span class="stat-lbl">点击次数</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="stat-time">00:00:00</span>
+          <span class="stat-lbl">运行时长</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Log Section -->
+    <section class="section">
+      <h2 class="section-title">操作日志</h2>
+      <div class="log-container" id="log-container">
+        <div class="log-empty">等待启动...</div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>🎯 目标: 赢取更多星屑，冲击王者段位</p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

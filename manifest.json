@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Agentank Raid Helper",
+  "version": "2.0.0",
+  "description": "自动点击并处理 agentank.ai/raid 游戏出击模式下的按钮",
+  "permissions": [
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://agentank.ai/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}
