@@ -1,6 +1,15 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.1.4
+// Agentank Raid Helper — 状态机自动化引擎 v2.2.2
 // ============================================================
+
+// 控制台常规日志开关：true 允许输出调试日志，false 统一关闭常规调试日志（console.log / console.warn）
+const ENABLE_LOG = false;
+
+if (!ENABLE_LOG) {
+  console.log = () => {};
+  console.warn = () => {};
+}
+
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
 // ── 注入扩展 ID 到 DOM 中，方便自动化测试工具读取 ──────────────
@@ -38,12 +47,13 @@ const gameState = {
   stars: 0,              // 当前持有的星星数量
   dust: 0,               // 当前持有的星屑数量
   totalRuns: 0,          // 本次运行总出击次数
-  totalWins: 0,          // 本次运行总胜利层数
+  // totalWins 已废弃，改用 bestDepth 记录最高层数
   totalEvacuations: 0,   // 本次运行总撤离次数
   totalLosses: 0,        // 本次运行总失败次数
   bestDepth: 0,          // 历史最高挑战关卡层数
   lastAction: '',        // 上一次执行的动作名称
   lastActionTime: 0,     // 上一次动作的时间戳（毫秒）
+  initialDust: null,     // 首次出击时记录的初始星屑数量（用于计算盈亏）
 };
 
 /**
@@ -567,6 +577,11 @@ async function processAutomation() {
           gameState.currentLayer = 0;       // 新出击局，重置层数计数
           gameState.enhancements = {};      // 重置已获得强化列表
           gameState.totalRuns++;            // 出击局数累加
+          // 首次出击时记录初始星屑，用于计算盈亏
+          if (gameState.initialDust === null) {
+            gameState.initialDust = detected.dust;
+            log('记录初始星屑: ' + detected.dust, 'info');
+          }
           return POLL_FAST;
         }
       }
@@ -625,13 +640,17 @@ async function processAutomation() {
       isLastStateUnknown = false;
       log('处于战斗中，等待关卡挑战结果...', 'state');
 
+      // 诊断用局部变量：查询当前页面上的奖励弹框和强化选项元素
+      const rModal = $('raidRewardModal');
+      const firstChoice = document.querySelector('.raid-choice');
+
       console.log(`[Raid Helper Debug] Battle状态诊断:
         - raidRewardModal存在: ${!!rModal}
         - raidRewardModal可见性(isModalShowing): ${rModal ? isModalShowing(rModal) : 'N/A'}
         - raidRewardModal.offsetWidth: ${rModal ? rModal.offsetWidth : 'N/A'}
         - 页面中.raid-choice选项存在: ${!!firstChoice}
         - .raid-choice选项可见性(isVisible): ${firstChoice ? isVisible(firstChoice) : 'N/A'}
-      `);
+      `);  // 注意：rModal 和 firstChoice 为本 case 分支内的局部变量
 
       // 战斗是自动进行的，插件保持观察，延长轮询周期以降低资源占用
       return POLL_BATTLE;
@@ -643,7 +662,6 @@ async function processAutomation() {
       const layer = detected.layer;
       gameState.currentLayer = Math.max(gameState.currentLayer, layer);
       gameState.bestDepth = Math.max(gameState.bestDepth, layer);
-      gameState.totalWins++;
 
       log(`第${layer}层胜利! 可选强化: ${detected.enhancements.map(e => e.name).join(', ')}`, 'info');
 
@@ -804,7 +822,6 @@ function syncStateToStorage(detected) {
       raidStars: gameState.stars,
       raidDust: gameState.dust,
       raidTotalRuns: gameState.totalRuns,
-      raidTotalWins: gameState.totalWins,
       raidTotalEvacuations: gameState.totalEvacuations,
       raidTotalLosses: gameState.totalLosses,
       raidBestDepth: gameState.bestDepth,
@@ -844,9 +861,16 @@ function initSidebar() {
 
   // 3. 初始同步默认状态（主开关默认开启，侧边栏不折叠）
   sidebarCollapsed = false;
-  statStartTime = null;
+  statStartTime = Date.now(); // 默认开启时立即开始计时
   statElapsedTime = 0;
   statClicksCount = 0;
+
+  // 每次重新进入页面时，清零 storage 中的运行时长记录，确保计时器从零开始
+  if (isContextValid()) {
+    try {
+      chrome.storage.local.set({ statStartTime: statStartTime, statElapsedTime: 0, statClicks: 0 });
+    } catch (e) { /* 静默忽略 */ }
+  }
 
   const isMasterActive = true; // 默认开启，等待异步补丁加载
 
@@ -860,7 +884,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.1.4</div>
+      <div class="version-tag">v2.2.2</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
@@ -895,6 +919,10 @@ function initSidebar() {
           <span class="state-value" id="sb-current-dust">0</span>
         </div>
         <div class="state-row">
+          <span class="state-label">📊 星屑盈亏</span>
+          <span class="state-value" id="sb-dust-profit">—</span>
+        </div>
+        <div class="state-row">
           <span class="state-label">最近操作</span>
           <span class="state-value small" id="sb-last-action">—</span>
         </div>
@@ -914,8 +942,8 @@ function initSidebar() {
           <span class="stat-lbl">总出击</span>
         </div>
         <div class="stat-box">
-          <span class="stat-val" id="sb-stat-wins">0</span>
-          <span class="stat-lbl">胜利层</span>
+          <span class="stat-val" id="sb-stat-best-depth">0</span>
+          <span class="stat-lbl">最高层</span>
         </div>
         <div class="stat-box">
           <span class="stat-val" id="sb-stat-evacuations">0</span>
@@ -1077,6 +1105,31 @@ function updateSidebarUI(detected) {
   const dustEl = document.getElementById('sb-current-dust');
   if (dustEl) dustEl.textContent = gameState.dust;
 
+  // 星屑盈亏计算与渲染
+  const dustProfitEl = document.getElementById('sb-dust-profit');
+  if (dustProfitEl) {
+    if (gameState.initialDust !== null) {
+      const diff = gameState.dust - gameState.initialDust;
+      const sign = diff > 0 ? '+' : '';
+      dustProfitEl.textContent = sign + diff;
+      // 盈利绿色、亏损红色、平衡默认色
+      if (diff > 0) {
+        dustProfitEl.style.color = '#10b981';
+        dustProfitEl.style.textShadow = '0 0 8px rgba(16, 185, 129, 0.3)';
+      } else if (diff < 0) {
+        dustProfitEl.style.color = '#ef4444';
+        dustProfitEl.style.textShadow = '0 0 8px rgba(239, 68, 68, 0.3)';
+      } else {
+        dustProfitEl.style.color = '#9ca3af';
+        dustProfitEl.style.textShadow = 'none';
+      }
+    } else {
+      dustProfitEl.textContent = '等待出击';
+      dustProfitEl.style.color = '#9ca3af';
+      dustProfitEl.style.textShadow = 'none';
+    }
+  }
+
   // 最近操作
   const actionEl = document.getElementById('sb-last-action');
   if (actionEl) actionEl.textContent = gameState.lastAction || '—';
@@ -1097,8 +1150,8 @@ function updateSidebarUI(detected) {
   // 战绩数据统计
   const runsEl = document.getElementById('sb-stat-runs');
   if (runsEl) runsEl.textContent = gameState.totalRuns;
-  const winsEl = document.getElementById('sb-stat-wins');
-  if (winsEl) winsEl.textContent = gameState.totalWins;
+  const bestDepthEl = document.getElementById('sb-stat-best-depth');
+  if (bestDepthEl) bestDepthEl.textContent = gameState.bestDepth;
   const evacsEl = document.getElementById('sb-stat-evacuations');
   if (evacsEl) evacsEl.textContent = gameState.totalEvacuations;
   const lossesEl = document.getElementById('sb-stat-losses');
@@ -1164,10 +1217,14 @@ function startLoop(delayMs) {
   }, actualDelay);
 }
 
-// ── 插件生命周期初始化 ───────────────────────────────────────────────
-// 在页面加载后注入侧边栏
-initSidebar();
-startLoop(POLL_FAST); // 以快速轮询探测状态拉起运行
+// ── 插件生命周期初始化 ─────────────────────────────────────────────
+// URL 路径守卫：仅在 /raid 页面注入侧边栏和启动自动化循环
+if (window.location.pathname.startsWith('/raid')) {
+  initSidebar();
+  startLoop(POLL_FAST); // 以快速轮询探测状态拉起运行
+} else {
+  console.log('%c[Raid Helper] 非出击页面，侧边栏不注入。', 'color: #9ca3af;');
+}
 
 // 监听通信消息（保留向后兼容）
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
