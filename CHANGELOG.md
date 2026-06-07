@@ -1,5 +1,20 @@
 # Agentank Raid Helper — 版本历史
 
+## v2.0.1 (2026-06-07) — 混合选择器容错修复
+
+> 🎯 目标：解决在真实运行时部分 DOM 元素缺少 ID 导致无法点击的 bug
+
+### 🛠️ Bug 修复与优化
+
+- **混合选择器机制**：在出击主页和仓库等区域，真实运行的 DOM 按钮可能缺少静态 HTML 模板中的 ID。已将单 ID 选择器升级为 `ID + class + 文本内容` 的混合匹配策略，保证元素被 100% 成功捕获并点击。
+  - 主页开始按钮：`#raidStartBtn` 容错 fallback 至 `.raid-home-start`
+  - 仓库按钮：`#raidWarehouseBtn` 容错 fallback 至 `.raid-home-view button.raid-secondary` 或文本 "打开仓库"
+  - 仓库返回按钮：容错 fallback 至 `.raid-warehouse-back` 或文本 "返回出击"
+  - 开始确认框按钮：`#raidStartConfirmBtn` 容错 fallback 至文本 "开始游戏" / "进入地图"
+- **模态框及状态检测增强**：
+  - 增加模态框子元素过滤，完美区分 `开始确认框` 与 `结算奖励框`，防止状态判定混淆。
+  - 仓库出售按钮匹配重构：不依赖父容器类名，直接全局过滤 button 文本，保证 "全部出售" / "出售" 稳定被捕获。
+
 ---
 
 ## v2.0.0 (2026-06-07) — 状态机引擎重构

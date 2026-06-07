@@ -94,6 +94,22 @@ function isVisible(el) {
   return rect.width > 0 && rect.height > 0;
 }
 
+/** Check if a modal is showing — uses MULTIPLE methods for reliability */
+function isModalShowing(el) {
+  if (!el) return false;
+  // Method 1: hidden attribute
+  if (el.hidden || el.hasAttribute('hidden')) return false;
+  // Method 2: CSS display check
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none') return false;
+  // It's showing
+  return true;
+}
+
+// Guard: track when we last clicked the main "开始游戏" to avoid re-clicking
+let lastStartClickTime = 0;
+const START_CLICK_GUARD_MS = 5000; // 5 second guard after clicking start
+
 function isEnabled(el) {
   return el && !el.disabled && !el.classList.contains('is-loading');
 }
@@ -124,13 +140,15 @@ function detectState() {
   if (!shell) return { state: 'UNKNOWN' };
 
   // 1) Check modals first (they overlay everything)
-  const rewardModal = $('raidRewardModal');
-  if (rewardModal && isVisible(rewardModal)) {
+  // Use hidden-attribute check — fixed-position modals may not pass getBoundingClientRect
+  const rewardModal = $('raidRewardModal') || document.querySelector('.raid-modal:not(#raidStartModal)');
+  if (isModalShowing(rewardModal)) {
     return detectRewardModalState(rewardModal);
   }
 
-  const startModal = $('raidStartModal');
-  if (startModal && isVisible(startModal)) {
+  const startModal = $('raidStartModal') || document.querySelector('#raidStartModal') || document.querySelector('.raid-modal');
+  // Avoid confusing startModal and rewardModal
+  if (startModal && isModalShowing(startModal) && !startModal.querySelector('.raid-choice')) {
     return { state: 'START_CONFIRM' };
   }
 
@@ -144,7 +162,7 @@ function detectState() {
   }
 
   // 3) Check for home/lobby view
-  const startBtn = $('raidStartBtn');
+  const startBtn = $('raidStartBtn') || document.querySelector('.raid-home-start');
   if (startBtn && isVisible(startBtn)) {
     const stars = readNumber($('raidHeaderStarBalance'));
     const dust  = readNumber($('raidHeaderDustBalance'));
@@ -163,7 +181,7 @@ function detectState() {
 }
 
 function detectRewardModalState(modal) {
-  const resultText = $('raidResultText');
+  const resultText = $('raidResultText') || modal.querySelector('p') || modal.querySelector('.raid-result-text');
   const text = resultText ? resultText.textContent.trim() : '';
 
   // Parse layer number from text like "第 1 层胜利" or "第1层胜利"
@@ -171,16 +189,19 @@ function detectRewardModalState(modal) {
   const layer = layerMatch ? parseInt(layerMatch[1], 10) : gameState.currentLayer;
 
   // Check for loss state
-  const lossActions = $('raidLossActions');
-  if (lossActions && isVisible(lossActions)) {
+  const lossActions = $('raidLossActions') || modal.querySelector('.raid-loss-actions') || findButtonByText('确定');
+  const hasLossButton = findButtonByText('确定', modal) || $('raidLossConfirmBtn');
+  const isLoss = (lossActions && isVisible(lossActions)) || text.includes('失败') || (hasLossButton && isVisible(hasLossButton) && !modal.querySelector('.raid-choice'));
+
+  if (isLoss) {
     return { state: 'DEFEAT', layer, resultText: text };
   }
 
   // It's a victory / reward choice
-  const choices = $('raidRewardChoices');
-  const choiceButtons = choices ? choices.querySelectorAll('.raid-choice') : [];
-  const escapeBtn = $('raidEscapeBtn');
-  const afterRewardActions = $('raidAfterRewardActions');
+  const choices = $('raidRewardChoices') || modal.querySelector('.raid-reward-choices');
+  const choiceButtons = choices ? choices.querySelectorAll('.raid-choice') : modal.querySelectorAll('.raid-choice');
+  const escapeBtn = $('raidEscapeBtn') || findButtonByText('撤离并保存', modal);
+  const afterRewardActions = $('raidAfterRewardActions') || modal.querySelector('.raid-after-reward-actions');
 
   // Parse available enhancement choices
   const enhancements = [];
@@ -333,10 +354,24 @@ async function processAutomation() {
     case 'MAIN_PAGE': {
       log(`出击大厅 | 星星: ${detected.stars} | 星屑: ${detected.dust}`, 'state');
 
+      // Guard 1: do NOT click start if the start modal is already showing
+      const modalCheck = $('raidStartModal') || document.querySelector('#raidStartModal') || document.querySelector('.raid-modal');
+      if (isModalShowing(modalCheck)) {
+        log('检测到开始游戏弹框已显示，跳转 to 确认流程...', 'state');
+        return POLL_FAST;
+      }
+
+      // Guard 2: do NOT re-click within 5 seconds of last start click
+      if (Date.now() - lastStartClickTime < START_CLICK_GUARD_MS) {
+        log('等待开始游戏弹框出现...', 'state');
+        return POLL_FAST;
+      }
+
       // Stars > 0 and button enabled → start game
       if (detected.canStart) {
-        const startBtn = $('raidStartBtn');
-        if (safeClick(startBtn, '开始游戏')) {
+        const startBtn = $('raidStartBtn') || document.querySelector('.raid-home-start');
+        if (safeClick(startBtn, '开始游戏(主页)')) {
+          lastStartClickTime = Date.now();
           gameState.currentLayer = 0;
           gameState.enhancements = {};
           gameState.totalRuns++;
@@ -347,7 +382,7 @@ async function processAutomation() {
       // Stars == 0 → open warehouse to exchange
       if (detected.stars <= 0) {
         // Check if warehouse button is available
-        const warehouseBtn = $('raidWarehouseBtn');
+        const warehouseBtn = $('raidWarehouseBtn') || document.querySelector('.raid-home-view button.raid-secondary') || findButtonByText('打开仓库');
         if (warehouseBtn && isEnabled(warehouseBtn) && isVisible(warehouseBtn)) {
           log('星星不足, 打开仓库兑换', 'warn');
           safeClick(warehouseBtn, '打开仓库');
@@ -365,7 +400,7 @@ async function processAutomation() {
     case 'START_CONFIRM': {
       log('选择坦克确认框', 'state');
       // Click the first tank card to select it if none selected
-      const tankGrid = $('raidTankCards');
+      const tankGrid = $('raidTankCards') || document.querySelector('.raid-tank-cards') || document.querySelector('.raid-start-card .grid');
       if (tankGrid) {
         const selected = tankGrid.querySelector('.raid-tank-card.is-selected');
         if (!selected) {
@@ -377,13 +412,16 @@ async function processAutomation() {
         }
       }
 
-      // Click confirm button "进入地图"
-      const confirmBtn = $('raidStartConfirmBtn');
+      // Click confirm button "开始游戏" (in modal)
+      const confirmBtn = $('raidStartConfirmBtn') || findButtonByText('开始游戏') || findButtonByText('进入地图');
       if (confirmBtn && isEnabled(confirmBtn)) {
-        safeClick(confirmBtn, '进入地图');
+        const btnText = confirmBtn.textContent.trim() || '确认开始';
+        safeClick(confirmBtn, `${btnText}(确认框)`);
+        lastStartClickTime = 0; // Reset guard since we confirmed
         return POLL_FAST;
       }
 
+      log('等待确认按钮可用...', 'state');
       return POLL_FAST;
     }
 
@@ -437,7 +475,7 @@ async function processAutomation() {
       gameState.currentLayer = 0;
       gameState.enhancements = {};
 
-      const lossBtn = $('raidLossConfirmBtn');
+      const lossBtn = $('raidLossConfirmBtn') || findButtonByText('确定') || findButtonByText('OK');
       if (lossBtn && isEnabled(lossBtn)) {
         safeClick(lossBtn, '确定(失败)');
       }
@@ -466,17 +504,17 @@ async function processAutomation() {
 
 function handleWarehouse() {
   // 1. Sell all items if any "全部出售" buttons are visible
-  const sellButtons = document.querySelectorAll('.raid-warehouse-actions button');
-  for (const btn of sellButtons) {
+  const buttons = document.querySelectorAll('button');
+  for (const btn of buttons) {
     if (isVisible(btn) && btn.textContent.trim().includes('全部出售')) {
-      log('出售仓库宝物', 'action');
+      log('出售仓库宝物(全部)', 'action');
       safeClick(btn, '全部出售');
       return POLL_FAST;
     }
   }
 
   // Also try individual "出售" buttons
-  for (const btn of sellButtons) {
+  for (const btn of buttons) {
     if (isVisible(btn) && btn.textContent.trim().startsWith('出售')) {
       log('出售单个宝物', 'action');
       safeClick(btn, '出售宝物');
@@ -492,10 +530,10 @@ function handleWarehouse() {
 
   if (stars <= 0 && dust > 0) {
     // Find the exchange button "兑换星星"
-    const exchangeBtn = findButtonByText('兑换星星');
+    const exchangeBtn = findButtonByText('兑换星星') || document.querySelector('.raid-warehouse-view button.raid-primary');
     if (exchangeBtn && isEnabled(exchangeBtn)) {
       // Set exchange amount to 1 (just enough to start one game)
-      const exchangeInput = document.querySelector('.raid-exchange-box input');
+      const exchangeInput = $('raidExchangeStarsInput') || document.querySelector('.raid-warehouse-view input') || document.querySelector('.raid-exchange-box input');
       if (exchangeInput) {
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
           window.HTMLInputElement.prototype, 'value'
@@ -513,7 +551,7 @@ function handleWarehouse() {
   // 3. Have stars → return to raid
   if (stars > 0) {
     // Find "返回出击" button
-    const backBtn = findButtonByText('返回出击');
+    const backBtn = findButtonByText('返回出击') || document.querySelector('.raid-warehouse-back');
     if (backBtn && isEnabled(backBtn)) {
       log('返回出击', 'action');
       safeClick(backBtn, '返回出击');
@@ -523,7 +561,7 @@ function handleWarehouse() {
 
   // If we have no stars and no dust, still try to go back
   if (stars <= 0 && dust <= 0) {
-    const backBtn = findButtonByText('返回出击');
+    const backBtn = findButtonByText('返回出击') || document.querySelector('.raid-warehouse-back');
     if (backBtn && isEnabled(backBtn)) {
       log('无资源，返回出击等待', 'warn');
       safeClick(backBtn, '返回出击');
