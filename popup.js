@@ -35,8 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Load saved settings ───────────────────────────────────
   chrome.storage.local.get(['masterActive'], (result) => {
-    masterSwitch.checked = result.masterActive || false;
-    updateStatusUI(masterSwitch.checked);
+    const active = result.masterActive !== false;
+    masterSwitch.checked = active;
+    updateStatusUI(active);
   });
 
   // ── Load and display all data ─────────────────────────────
@@ -78,7 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Timer
-      updateTimerDisplay(data.statStartTime, data.statElapsedTime, data.masterActive);
+      const isMasterActive = data.masterActive !== false;
+      updateTimerDisplay(data.statStartTime, data.statElapsedTime, isMasterActive);
 
       // Log
       renderLog(data.raidLog);

@@ -3,6 +3,17 @@
 // ============================================================
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
+// ── 注入扩展 ID 到 DOM 中，方便自动化测试工具读取 ──────────────
+(function () {
+  if (typeof document !== 'undefined') {
+    const testDiv = document.createElement('div');
+    testDiv.id = 'agentank-helper-extension-id';
+    testDiv.setAttribute('data-extension-id', isContextValid() ? chrome.runtime.id : '');
+    testDiv.style.display = 'none';
+    document.body.appendChild(testDiv);
+  }
+})();
+
 // ── 常量定义 ────────────────────────────────────────────────
 const POLL_FAST = 1500;   // 1.5秒 — 菜单和模态框的检测频率
 const POLL_BATTLE = 4000;   // 4秒   — 战斗进行中的检测频率（降低频率以减少资源占用）
@@ -444,8 +455,9 @@ async function processAutomation() {
       resolve({ masterActive: false });
     }
   });
-  // 如果主开关未激活，退出轮询，进入低频检测态
-  if (!config.masterActive) return POLL_SLOW;
+  // 默认开启：只有当显式设置为 false 时才不运行
+  const masterActive = config.masterActive !== false;
+  if (!masterActive) return POLL_SLOW;
 
   // 探测当前所在页面状态
   const detected = detectState();
