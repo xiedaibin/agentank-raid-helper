@@ -1,5 +1,17 @@
 # Agentank Raid Helper — 版本历史
 
+## v2.0.3 (2026-06-07) — 物理可见性与精准ID选择器热修复
+
+> 🎯 目标：彻底修复由于常驻隐藏模态框导致主页“开始游戏”按钮被错误锁死不点击的问题
+
+### 🛠️ Bug 修复与优化
+
+- **物理渲染可见性校验**：在 `isModalShowing()` 中加入物理渲染尺寸检查 `offsetWidth === 0 && offsetHeight === 0`。这样即使模态框常驻于 DOM 树中且其父容器隐藏，也能被正确识别为隐藏状态，从而解除对主页“开始游戏”按钮的误判锁死。
+- **精确模态框 ID 选择器**：抛弃模糊的 `.raid-modal` 类选择器，重构为直接检索页面上的真实模态框 ID（出击确认 `raidStartModal`、结算弹框 `raidSettlementModal`、技能强化 `raidChoiceModal`），从根本上避免弹框混淆。
+- **主页出击守卫精简**：移除了模糊类名 fallback 导致的冲突，出击确认守卫直接锁定 `raidStartModal` 元素。
+
+---
+
 ## v2.0.2 (2026-06-07) — 插件重载上下文失效防御热修复
 
 > 🎯 目标：彻底解决由于 Chrome 插件重新加载导致老旧 content script 轮询抛出 `Extension context invalidated` 异常的问题

@@ -4,9 +4,9 @@
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
 // ── 常量定义 ────────────────────────────────────────────────
-const POLL_FAST   = 1500;   // 1.5秒 — 菜单和模态框的检测频率
+const POLL_FAST = 1500;   // 1.5秒 — 菜单和模态框的检测频率
 const POLL_BATTLE = 4000;   // 4秒   — 战斗进行中的检测频率（降低频率以减少资源占用）
-const POLL_SLOW   = 3000;   // 3秒   — 兜底/未知状态的检测频率
+const POLL_SLOW = 3000;   // 3秒   — 兜底/未知状态的检测频率
 const CLICK_COOLDOWN = 1800; // 点击冷却时间（毫秒），防止按钮被快速重复点击
 
 // 强化技能选择优先级（数组下标越小，优先级越高）
@@ -54,11 +54,11 @@ function log(msg, level = 'info') {
 
   // 控制台彩色输出配置
   const colors = {
-    info:    'color: #10b981; font-weight: bold;', // 绿色：正常信息
-    warn:    'color: #f59e0b; font-weight: bold;', // 黄色：警告/撤离决策
-    error:   'color: #ef4444; font-weight: bold;', // 红色：失败/错误
-    action:  'color: #6366f1; font-weight: bold;', // 紫色：执行点击动作
-    state:   'color: #06b6d4; font-weight: bold;', // 青色：状态机状态流转
+    info: 'color: #10b981; font-weight: bold;', // 绿色：正常信息
+    warn: 'color: #f59e0b; font-weight: bold;', // 黄色：警告/撤离决策
+    error: 'color: #ef4444; font-weight: bold;', // 红色：失败/错误
+    action: 'color: #6366f1; font-weight: bold;', // 紫色：执行点击动作
+    state: 'color: #06b6d4; font-weight: bold;', // 青色：状态机状态流转
   };
   console.log(`%c[Raid Helper][${ts}] ${msg}`, colors[level] || colors.info);
 
@@ -138,18 +138,19 @@ function isVisible(el) {
 }
 
 /** 
- * 检测模态框弹框是否显现 — 采用 hidden 属性 + 样式 display 的双重检查以确保高可靠性
+ * 检测模态框弹框是否显现 — 采用 物理尺寸 + hidden 属性 + 样式 display 的三重检查以确保高可靠性
  * @param {HTMLElement} el 模态框 DOM 元素
  * @returns {boolean} 
  */
 function isModalShowing(el) {
   if (!el) return false;
-  // 方法一：检查 hidden 属性及对应 DOM 属性
+  // 检查是否设置了 hidden 属性
   if (el.hidden || el.hasAttribute('hidden')) return false;
-  // 方法二：检查 CSS display 计算样式
+  // 核心校验：如果元素的渲染宽度和高度都为 0，说明被隐藏（常驻 DOM 隐藏元素的核心特征）
+  if (el.offsetWidth === 0 && el.offsetHeight === 0) return false;
+  // 检查 CSS 计算样式的 display 和 visibility
   const style = window.getComputedStyle(el);
-  if (style.display === 'none') return false;
-  // 已显现
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
   return true;
 }
 
@@ -205,16 +206,21 @@ function detectState() {
   if (!shell) return { state: 'UNKNOWN' }; // 未检测到 Raid 容器界面
 
   // 1) 优先检测模态弹框（它们层级最高，会覆盖在基础容器之上）
-  // 检查结算/选择奖励弹框（优先通过 ID，随后 fallback 至排除了出击框的 .raid-modal 选择器）
-  const rewardModal = $('raidRewardModal') || document.querySelector('.raid-modal:not(#raidStartModal)');
-  if (isModalShowing(rewardModal)) {
-    return detectRewardModalState(rewardModal);
+  // 检查胜利/失败结算弹框
+  const settlementModal = $('raidSettlementModal');
+  if (isModalShowing(settlementModal)) {
+    return detectRewardModalState(settlementModal);
+  }
+
+  // 检查选择奖励强化弹框
+  const choiceModal = $('raidChoiceModal');
+  if (isModalShowing(choiceModal)) {
+    return detectRewardModalState(choiceModal);
   }
 
   // 检查开始游戏选择坦克的弹框
-  const startModal = $('raidStartModal') || document.querySelector('#raidStartModal') || document.querySelector('.raid-modal');
-  // 防呆：确认框不应包含强化技能卡片的选择区 (.raid-choice)
-  if (startModal && isModalShowing(startModal) && !startModal.querySelector('.raid-choice')) {
+  const startModal = $('raidStartModal') || document.querySelector('#raidStartModal');
+  if (isModalShowing(startModal)) {
     return { state: 'START_CONFIRM' };
   }
 
@@ -234,9 +240,9 @@ function detectState() {
   if (startBtn && isVisible(startBtn)) {
     // 读取头部面板展示的当前星星和星屑余额
     const stars = readNumber($('raidHeaderStarBalance'));
-    const dust  = readNumber($('raidHeaderDustBalance'));
+    const dust = readNumber($('raidHeaderDustBalance'));
     gameState.stars = stars;
-    gameState.dust  = dust;
+    gameState.dust = dust;
     return { state: 'MAIN_PAGE', stars, dust, canStart: isEnabled(startBtn) };
   }
 
@@ -282,7 +288,7 @@ function detectRewardModalState(modal) {
   for (const btn of choiceButtons) {
     if (!isVisible(btn)) continue;
     const strong = btn.querySelector('strong');
-    const span   = btn.querySelector('span');
+    const span = btn.querySelector('span');
     if (strong) {
       const name = strong.textContent.trim();
       const desc = span ? span.textContent.trim() : '';
@@ -293,7 +299,7 @@ function detectRewardModalState(modal) {
         name,
         desc,
         currentLv: lvMatch ? parseInt(lvMatch[1], 10) : 0,
-        maxLv:     lvMatch ? parseInt(lvMatch[2], 10) : 0,
+        maxLv: lvMatch ? parseInt(lvMatch[2], 10) : 0,
       });
     }
   }
@@ -454,7 +460,7 @@ async function processAutomation() {
       log(`出击大厅 | 星星: ${detected.stars} | 星屑: ${detected.dust}`, 'state');
 
       // 守卫一：如果此时开始游戏选择坦克的弹框已经被点出来并显现，跳转执行弹框确认逻辑
-      const modalCheck = $('raidStartModal') || document.querySelector('#raidStartModal') || document.querySelector('.raid-modal');
+      const modalCheck = $('raidStartModal');
       if (isModalShowing(modalCheck)) {
         log('检测到开始游戏弹框已显示，跳转至确认流程...', 'state');
         return POLL_FAST;
@@ -627,9 +633,9 @@ function handleWarehouse() {
 
   // 2. 刷新当前的资产余额（星星数、星屑数）
   const stars = readNumber($('raidHeaderStarBalance'));
-  const dust  = readNumber($('raidHeaderDustBalance'));
+  const dust = readNumber($('raidHeaderDustBalance'));
   gameState.stars = stars;
-  gameState.dust  = dust;
+  gameState.dust = dust;
 
   // 如果没有星星但是还有星屑，在仓库中向星星兑换器写入 "1" 并点击兑换一星，控制星屑投资的浪费
   if (stars <= 0 && dust > 0) {
@@ -713,14 +719,14 @@ function startLoop(delayMs) {
   if (loopTimer) clearTimeout(loopTimer);
 
   // 引入 ±300毫秒 的随机微抖动，模拟真人的动作延迟变化
-  const jitter = Math.floor(Math.random() * 600) - 300; 
+  const jitter = Math.floor(Math.random() * 600) - 300;
   const actualDelay = Math.max(500, (delayMs || POLL_FAST) + jitter);
 
   loopTimer = setTimeout(async () => {
     // 每次执行前安全拦截校验：如扩展已更新或被重载，立即终止并退出循环以防止抛错
     if (!isContextValid()) {
       console.log('%c[Raid Helper] Extension context invalidated. Stopping loop.', 'color: #ef4444; font-weight: bold;');
-      return; 
+      return;
     }
     try {
       const nextDelay = await processAutomation();
