@@ -1,0 +1,477 @@
+/* ============================================================
+   Agentank Raid Helper — 注入式悬浮侧边栏样式表 v2.0
+   ============================================================ */
+
+/* 设计系统与变量定义 */
+:root {
+  --sb-bg-primary: #0b0f19;
+  --sb-bg-card: rgba(255, 255, 255, 0.03);
+  --sb-border-color: rgba(255, 255, 255, 0.07);
+  --sb-border-hover: rgba(255, 255, 255, 0.15);
+  
+  --sb-color-accent: hsl(205, 100%, 55%);      /* 霓虹蓝 */
+  --sb-color-accent-rgb: 0, 150, 255;
+  --sb-color-success: #10b981;     /* 翠绿 */
+  --sb-color-success-rgb: 16, 185, 129;
+  --sb-color-warning: #f59e0b;     /* 暖橙 */
+  --sb-color-warning-rgb: 245, 158, 11;
+  --sb-color-danger: #ef4444;
+  --sb-color-purple: #8b5cf6;
+  --sb-color-text-main: #f3f4f6;   /* 近纯白 */
+  --sb-color-text-muted: #9ca3af;  /* 酷灰 */
+  
+  --sb-font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --sb-shadow-glow: 0 0 15px rgba(var(--sb-color-accent-rgb), 0.25);
+  --sb-shadow-success: 0 0 15px rgba(var(--sb-color-success-rgb), 0.35);
+}
+
+/* 侧边栏主容器：固定浮动在网页最右侧 */
+.agentank-sidebar {
+  all: initial; /* 隔绝网页外部样式的污染 */
+  box-sizing: border-box;
+  font-family: var(--sb-font-family);
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 320px;
+  height: 100vh;
+  background-color: var(--sb-bg-primary);
+  background-image: radial-gradient(circle at 50% 0%, rgba(var(--sb-color-accent-rgb), 0.15) 0%, transparent 75%);
+  border-left: 1px solid var(--sb-border-color);
+  color: var(--sb-color-text-main);
+  padding: 16px;
+  overflow-y: auto;
+  box-shadow: -5px 0 25px rgba(0, 0, 0, 0.6);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 2147483647; /* 赋予最高层级，盖在所有游戏组件之上 */
+}
+
+/* 侧边栏内的全局子元素盒模型修正 */
+.agentank-sidebar * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: var(--sb-font-family);
+  color: var(--sb-color-text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 折叠状态样式：向右侧平移滑出屏幕 */
+.agentank-sidebar.is-collapsed {
+  transform: translateX(100%);
+}
+
+/* 折叠/展开控制小拉手 */
+.agentank-sidebar-toggle {
+  position: absolute;
+  left: -32px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 64px;
+  background: var(--sb-bg-primary);
+  border: 1px solid var(--sb-border-color);
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: -5px 0 15px rgba(0, 0, 0, 0.3);
+  transition: background-color 0.2s, color 0.2s;
+  z-index: 2147483647;
+}
+
+.agentank-sidebar-toggle:hover {
+  background-color: #111827;
+}
+
+/* 拉手内的箭头图标样式 */
+.agentank-sidebar-toggle span {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: var(--sb-color-accent);
+  text-shadow: var(--sb-shadow-glow);
+}
+
+/* 头部样式 */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.logo-area {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.logo-glow {
+  position: absolute;
+  left: -8px;
+  width: 24px;
+  height: 24px;
+  background: var(--sb-color-accent);
+  filter: blur(15px);
+  opacity: 0.5;
+  z-index: 0;
+}
+
+.logo-text {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, #ffffff 30%, #a5b4fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  z-index: 1;
+}
+
+.logo-text span {
+  background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.version-tag {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--sb-border-color);
+  border-radius: 20px;
+  color: var(--sb-color-text-muted);
+}
+
+/* 状态主卡片 */
+.status-card {
+  background: var(--sb-bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--sb-border-color);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.status-card:hover {
+  border-color: var(--sb-border-hover);
+}
+
+.status-card.active-state {
+  border-color: rgba(var(--sb-color-success-rgb), 0.3);
+  box-shadow: 0 0 15px rgba(var(--sb-color-success-rgb), 0.1);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  position: relative;
+}
+
+.pulse-dot::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+.pulse-dot.idle {
+  background-color: var(--sb-color-warning);
+}
+.pulse-dot.idle::after {
+  background-color: var(--sb-color-warning);
+}
+
+.pulse-dot.active {
+  background-color: var(--sb-color-success);
+}
+.pulse-dot.active::after {
+  background-color: var(--sb-color-success);
+}
+
+.status-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.master-switch-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.switch-label {
+  font-size: 0.75rem;
+  color: var(--sb-color-text-muted);
+  font-weight: 500;
+}
+
+/* 区域结构 */
+.section {
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--sb-color-text-muted);
+  margin-bottom: 6px;
+  padding-left: 4px;
+}
+
+/* 实时状态卡片 */
+.state-card {
+  background: var(--sb-bg-card);
+  border: 1px solid var(--sb-border-color);
+  border-radius: 10px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.state-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.state-label {
+  font-size: 0.72rem;
+  color: var(--sb-color-text-muted);
+  font-weight: 500;
+}
+
+.state-value {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--sb-color-text-main);
+}
+
+.state-value.highlight {
+  color: var(--sb-color-accent);
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-shadow: 0 0 10px rgba(var(--sb-color-accent-rgb), 0.3);
+}
+
+.state-value.small {
+  font-size: 0.68rem;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 芯片技能 */
+.enhance-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 24px;
+}
+
+.enhance-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: rgba(139, 92, 246, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #c4b5fd;
+}
+
+.enhance-chip b {
+  color: var(--sb-color-purple);
+  font-weight: 800;
+}
+
+.enhance-empty {
+  font-size: 0.65rem;
+  color: var(--sb-color-text-muted);
+  font-style: italic;
+}
+
+/* 战绩统计 */
+.stats-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.stats-container + .stats-container {
+  margin-top: 4px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.stat-box {
+  background: var(--sb-bg-card);
+  border: 1px solid var(--sb-border-color);
+  border-radius: 8px;
+  padding: 6px 4px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-val {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--sb-color-accent);
+  text-shadow: 0 0 8px rgba(var(--sb-color-accent-rgb), 0.2);
+}
+
+.stat-lbl {
+  font-size: 0.58rem;
+  color: var(--sb-color-text-muted);
+}
+
+/* 操作日志 */
+.log-container {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--sb-border-color);
+  border-radius: 8px;
+  padding: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.log-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.log-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.log-entry {
+  font-size: 0.62rem;
+  line-height: 1.4;
+  padding: 1px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.log-ts {
+  color: rgba(255, 255, 255, 0.25);
+  margin-right: 4px;
+  font-size: 0.58rem;
+}
+
+.log-info { color: #6ee7b7; }
+.log-warn { color: #fcd34d; }
+.log-error { color: #fca5a5; }
+.log-action { color: #a5b4fc; }
+.log-state { color: #67e8f9; }
+
+.log-empty {
+  font-size: 0.65rem;
+  color: var(--sb-color-text-muted);
+  text-align: center;
+  padding: 6px;
+  font-style: italic;
+}
+
+/* 核心主开关 Slider */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--sb-border-color);
+  border-radius: 34px;
+}
+
+.slider::before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+input:checked + .slider {
+  background-color: var(--sb-color-success);
+  box-shadow: var(--sb-shadow-success);
+  border-color: transparent;
+}
+
+input:checked + .slider::before {
+  transform: translateX(18px);
+}
+
+/* 页脚 */
+.app-footer {
+  text-align: center;
+  margin-top: 10px;
+  font-size: 0.62rem;
+  color: var(--sb-color-text-muted);
+  border-top: 1px solid var(--sb-border-color);
+  padding-top: 8px;
+}
+
+/* 状态动效 */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}

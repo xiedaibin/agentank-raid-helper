@@ -24,6 +24,12 @@ const CLICK_COOLDOWN = 1800; // 点击冷却时间（毫秒），防止按钮被
 // “备用核心”具有绝对最高优先级，在代码中进行了特殊判断和处理，不在此列表中
 const ENHANCE_PRIORITY = ['自动护盾', '宝物磁场', '技能冷却', '开局推进'];
 
+// ── 侧边栏及运行时长统计全局变量 ─────────────────────────────────
+let sidebarCollapsed = false;
+let statClicksCount = 0;
+let statStartTime = null;
+let statElapsedTime = 0;
+
 // ── 游戏运行状态数据 ───────────────────────────────────────────────
 const gameState = {
   currentLayer: 0,       // 当前挑战的关卡层数
@@ -119,7 +125,13 @@ function safeClick(element, label) {
     try {
       chrome.storage.local.get('statClicks', (r) => {
         if (!isContextValid()) return;
-        chrome.storage.local.set({ statClicks: (r.statClicks || 0) + 1 });
+        const newClicks = (r.statClicks || 0) + 1;
+        chrome.storage.local.set({ statClicks: newClicks });
+
+        // 原地更新侧边栏 UI，消除延迟
+        statClicksCount = newClicks;
+        const clicksEl = document.getElementById('sb-stat-clicks');
+        if (clicksEl) clicksEl.textContent = newClicks;
       });
     } catch (e) {
       console.warn('[Raid Helper] Failed to update click statistics:', e.message);
@@ -496,11 +508,11 @@ async function processAutomation() {
         }
       }
 
-      // 星星归零且有星屑，打开仓库自动兑换
+      // 星星归零，打开仓库自动变现/兑换
       if (detected.stars <= 0) {
-        const warehouseBtn = $('raidWarehouseBtn') || document.querySelector('.raid-home-view button.raid-secondary') || findButtonByText('打开仓库');
+        const warehouseBtn = document.querySelector('.raid-secondary') || findButtonByText('打开仓库');
         if (warehouseBtn && isEnabled(warehouseBtn) && isVisible(warehouseBtn)) {
-          log('星星不足, 打开仓库兑换', 'warn');
+          log('星星不足, 打开仓库变现/兑换', 'warn');
           safeClick(warehouseBtn, '打开仓库');
           return POLL_FAST;
         } else {
@@ -679,14 +691,10 @@ function handleWarehouse() {
     }
   }
 
-  // 如果既没有星星也没有星屑（无资源可用），依然尝试点击“返回出击”回到出击大厅静待变化
+  // 如果既没有星星也没有星屑（无资源可用），留在仓库等待挂机产出宝物，避免与大厅频繁循环跳转
   if (stars <= 0 && dust <= 0) {
-    const backBtn = findButtonByText('返回出击') || document.querySelector('.raid-warehouse-back');
-    if (backBtn && isEnabled(backBtn)) {
-      log('无资源，返回出击等待', 'warn');
-      safeClick(backBtn, '返回出击');
-      return POLL_FAST;
-    }
+    log('无可用星星与星屑，留在仓库等待挂机宝物产出...', 'state');
+    return POLL_SLOW;
   }
 
   return POLL_FAST;
@@ -695,10 +703,14 @@ function handleWarehouse() {
 // ── 插件状态共享与保存 ────────────────────────────────────
 
 /**
- * 将最新的状态数据刷新同步至 chrome.storage.local，以便 popup 界面读取并渲染
+ * 将最新的状态数据刷新同步至侧边栏 DOM 和 chrome.storage.local
  * @param {object} detected 识别出的当前状态详情对象
  */
 function syncStateToStorage(detected) {
+  // 1. 同步更新网页内的悬浮侧边栏 UI，实现零通信延迟
+  updateSidebarUI(detected);
+
+  // 2. 同步存储至 local 作为持久化备份
   if (!isContextValid()) return;
   try {
     chrome.storage.local.set({
@@ -716,6 +728,300 @@ function syncStateToStorage(detected) {
     });
   } catch (e) {
     console.warn('[Raid Helper] Failed to sync state to storage:', e.message);
+  }
+}
+
+// ── 侧边栏 DOM 初始化与渲染 ──────────────────────────────────────────
+
+const stateNames = {
+  'MAIN_PAGE': '🏠 出击大厅',
+  'START_CONFIRM': '🎯 选择坦克',
+  'BATTLE': '⚔️ 战斗中',
+  'VICTORY_CHOICE': '🏆 胜利选技能',
+  'DEFEAT': '💀 战斗失败',
+  'WAREHOUSE': '📦 仓库管理',
+  'LOADING': '⏳ 加载中',
+  'UNKNOWN': '❓ 未知',
+};
+
+/**
+ * 在游戏页面中动态创建并注入固定浮动的控制面板侧边栏
+ */
+async function initSidebar() {
+  if (typeof document === 'undefined') return;
+
+  // 1. 检查是否已存在侧边栏，防止重复注入
+  if (document.getElementById('agentankSidebar')) return;
+
+  // 2. 创建侧边栏根容器
+  const sidebar = document.createElement('div');
+  sidebar.className = 'agentank-sidebar';
+  sidebar.id = 'agentankSidebar';
+
+  // 3. 从 storage 读取已保存的设置（开关、折叠状态、历史统计数据）
+  const data = await new Promise(resolve => {
+    if (isContextValid()) {
+      chrome.storage.local.get([
+        'sidebarCollapsed', 'masterActive',
+        'statStartTime', 'statElapsedTime', 'statClicks'
+      ], r => resolve(r || {}));
+    } else {
+      resolve({});
+    }
+  });
+
+  sidebarCollapsed = data.sidebarCollapsed || false;
+  if (sidebarCollapsed) {
+    sidebar.classList.add('is-collapsed');
+  }
+
+  statStartTime = data.statStartTime || null;
+  statElapsedTime = data.statElapsedTime || 0;
+  statClicksCount = data.statClicks || 0;
+
+  const isMasterActive = data.masterActive !== false; // 默认开启
+
+  // 4. 构建侧边栏内部 HTML 骨架
+  sidebar.innerHTML = `
+    <div class="agentank-sidebar-toggle" id="agentankSidebarToggle">
+      <span id="agentankSidebarToggleArrow">${sidebarCollapsed ? '‹' : '›'}</span>
+    </div>
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="logo-glow"></span>
+        <h1 class="logo-text">Agentank <span>Raid</span></h1>
+      </div>
+      <div class="version-tag">v2.0.4</div>
+    </header>
+    <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
+      <div class="status-indicator">
+        <span class="pulse-dot ${isMasterActive ? 'active' : 'idle'}" id="sb-status-dot"></span>
+        <span class="status-text" id="sb-status-text">${isMasterActive ? '正在出击' : '未运行'}</span>
+      </div>
+      <div class="master-switch-container">
+        <span class="switch-label">主开关</span>
+        <label class="switch">
+          <input type="checkbox" id="sb-master-switch" ${isMasterActive ? 'checked' : ''}>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    <section class="section">
+      <h2 class="section-title">实时状态</h2>
+      <div class="state-card">
+        <div class="state-row">
+          <span class="state-label">当前阶段</span>
+          <span class="state-value" id="sb-current-state">—</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">当前层数</span>
+          <span class="state-value highlight" id="sb-current-layer">0</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">⭐ 星星</span>
+          <span class="state-value" id="sb-current-stars">0</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">✨ 星屑</span>
+          <span class="state-value" id="sb-current-dust">0</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">最近操作</span>
+          <span class="state-value small" id="sb-last-action">—</span>
+        </div>
+      </div>
+    </section>
+    <section class="section">
+      <h2 class="section-title">当前强化</h2>
+      <div class="enhance-list" id="sb-enhance-list">
+        <span class="enhance-empty">暂无强化</span>
+      </div>
+    </section>
+    <section class="section">
+      <h2 class="section-title">战绩统计</h2>
+      <div class="stats-container">
+        <div class="stat-box">
+          <span class="stat-val" id="sb-stat-runs">0</span>
+          <span class="stat-lbl">总出击</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="sb-stat-wins">0</span>
+          <span class="stat-lbl">胜利层</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="sb-stat-evacuations">0</span>
+          <span class="stat-lbl">撤离次</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="sb-stat-losses">0</span>
+          <span class="stat-lbl">失败次</span>
+        </div>
+      </div>
+      <div class="stats-container" style="margin-top: 4px;">
+        <div class="stat-box">
+          <span class="stat-val" id="sb-stat-clicks">0</span>
+          <span class="stat-lbl">点击次数</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-val" id="sb-stat-time">00:00:00</span>
+          <span class="stat-lbl">运行时长</span>
+        </div>
+      </div>
+    </section>
+    <section class="section">
+      <h2 class="section-title">操作日志</h2>
+      <div class="log-container" id="sb-log-container">
+        <div class="log-empty">等待启动...</div>
+      </div>
+    </section>
+    <footer class="app-footer">
+      <p>🎯 目标: 赢取更多星屑</p>
+    </footer>
+  `;
+
+  document.body.appendChild(sidebar);
+
+  // 5. 绑定展开/收起拉手的点击事件
+  const toggleBtn = document.getElementById('agentankSidebarToggle');
+  const arrowSpan = document.getElementById('agentankSidebarToggleArrow');
+  toggleBtn.addEventListener('click', () => {
+    sidebarCollapsed = !sidebarCollapsed;
+    if (sidebarCollapsed) {
+      sidebar.classList.add('is-collapsed');
+      arrowSpan.textContent = '‹';
+    } else {
+      sidebar.classList.remove('is-collapsed');
+      arrowSpan.textContent = '›';
+    }
+    if (isContextValid()) {
+      chrome.storage.local.set({ sidebarCollapsed });
+    }
+  });
+
+  // 6. 绑定控制台主开关的勾选改变事件
+  const masterSwitch = document.getElementById('sb-master-switch');
+  const statusDot = document.getElementById('sb-status-dot');
+  const statusText = document.getElementById('sb-status-text');
+  const statusCard = document.getElementById('sb-status-card');
+
+  masterSwitch.addEventListener('change', () => {
+    const val = masterSwitch.checked;
+    if (val) {
+      statusDot.className = 'pulse-dot active';
+      statusText.textContent = '正在出击';
+      statusCard.classList.add('active-state');
+      statStartTime = Date.now();
+      if (isContextValid()) {
+        chrome.storage.local.set({ masterActive: true, statStartTime });
+      }
+    } else {
+      statusDot.className = 'pulse-dot idle';
+      statusText.textContent = '未运行';
+      statusCard.classList.remove('active-state');
+      const elapsed = Date.now() - (statStartTime || Date.now());
+      statElapsedTime += elapsed;
+      statStartTime = null;
+      if (isContextValid()) {
+        chrome.storage.local.set({ masterActive: false, statStartTime: null, statElapsedTime });
+      }
+    }
+  });
+
+  // 7. 开启运行时长每秒时钟刷新
+  setInterval(updateTimeDisplay, 1000);
+}
+
+/**
+ * 格式化并每秒刷新侧边栏上展示的运行时长
+ */
+function updateTimeDisplay() {
+  const timeVal = document.getElementById('sb-stat-time');
+  if (!timeVal) return;
+
+  const formatMs = (ms) => {
+    let sec = Math.floor(ms / 1000);
+    let min = Math.floor(sec / 60);
+    sec = sec % 60;
+    let hr = Math.floor(min / 60);
+    min = min % 60;
+    return `${String(hr).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  };
+
+  let currentElapsed = statElapsedTime || 0;
+  if (statStartTime) {
+    currentElapsed += (Date.now() - statStartTime);
+  }
+  timeVal.textContent = formatMs(currentElapsed);
+}
+
+/**
+ * 原地渲染更新侧边栏各数据看板
+ * @param {object} detected 识别出的当前状态详情对象
+ */
+function updateSidebarUI(detected) {
+  // 当前阶段
+  const stateEl = document.getElementById('sb-current-state');
+  if (stateEl) stateEl.textContent = stateNames[detected.state] || '—';
+
+  // 当前层数
+  const layerEl = document.getElementById('sb-current-layer');
+  if (layerEl) layerEl.textContent = gameState.currentLayer;
+
+  // 星星与星屑
+  const starsEl = document.getElementById('sb-current-stars');
+  if (starsEl) starsEl.textContent = gameState.stars;
+  const dustEl = document.getElementById('sb-current-dust');
+  if (dustEl) dustEl.textContent = gameState.dust;
+
+  // 最近操作
+  const actionEl = document.getElementById('sb-last-action');
+  if (actionEl) actionEl.textContent = gameState.lastAction || '—';
+
+  // 强化卡片渲染
+  const enhanceList = document.getElementById('sb-enhance-list');
+  if (enhanceList) {
+    const keys = Object.keys(gameState.enhancements).filter(k => gameState.enhancements[k] > 0);
+    if (keys.length > 0) {
+      enhanceList.innerHTML = keys.map(k =>
+        `<span class="enhance-chip">${k} <b>×${gameState.enhancements[k]}</b></span>`
+      ).join('');
+    } else {
+      enhanceList.innerHTML = '<span class="enhance-empty">暂无强化</span>';
+    }
+  }
+
+  // 战绩数据统计
+  const runsEl = document.getElementById('sb-stat-runs');
+  if (runsEl) runsEl.textContent = gameState.totalRuns;
+  const winsEl = document.getElementById('sb-stat-wins');
+  if (winsEl) winsEl.textContent = gameState.totalWins;
+  const evacsEl = document.getElementById('sb-stat-evacuations');
+  if (evacsEl) evacsEl.textContent = gameState.totalEvacuations;
+  const lossesEl = document.getElementById('sb-stat-losses');
+  if (lossesEl) lossesEl.textContent = gameState.totalLosses;
+
+  // 累计点击次数
+  const clicksEl = document.getElementById('sb-stat-clicks');
+  if (clicksEl) clicksEl.textContent = statClicksCount;
+
+  // 渲染操作日志
+  const logContainer = document.getElementById('sb-log-container');
+  if (logContainer) {
+    if (logEntries.length === 0) {
+      logContainer.innerHTML = '<div class="log-empty">等待启动...</div>';
+    } else {
+      const levelColors = {
+        info: 'log-info',
+        warn: 'log-warn',
+        error: 'log-error',
+        action: 'log-action',
+        state: 'log-state',
+      };
+      logContainer.innerHTML = logEntries.slice().reverse().map(entry => {
+        const cls = levelColors[entry.level] || 'log-info';
+        return `<div class="log-entry ${cls}"><span class="log-ts">${entry.ts}</span> ${entry.msg}</div>`;
+      }).join('');
+    }
   }
 }
 
@@ -755,9 +1061,12 @@ function startLoop(delayMs) {
 }
 
 // ── 插件生命周期初始化 ───────────────────────────────────────────────
-startLoop(POLL_FAST); // 以快速轮询探测状态拉起运行
+// 在页面加载后注入侧边栏
+initSidebar().then(() => {
+  startLoop(POLL_FAST); // 以快速轮询探测状态拉起运行
+});
 
-// 监听控制面板 Popup 发送的通信消息
+// 监听通信消息（保留向后兼容）
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'config_updated') {
     log('配置已更新', 'info');
@@ -772,3 +1081,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 log('引擎已启动, 等待主开关激活...', 'info');
+

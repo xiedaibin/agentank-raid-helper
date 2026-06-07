@@ -25,7 +25,7 @@ agentraid/
 ├── popup.js            # 仪表盘数据同步与控制逻辑
 ├── popup.css           # 仪表盘微动动画与暗色玻璃拟态样式
 ├── CHANGELOG.md        # 版本演进历史管理
-└── @GEMINI.md          # 本文档
+└── GEMINI.md          # 本文档
 ```
 
 ---

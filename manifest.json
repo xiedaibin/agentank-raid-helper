@@ -7,7 +7,6 @@
     "storage"
   ],
   "action": {
-    "default_popup": "popup.html",
     "default_icon": "icon.png"
   },
   "icons": {
@@ -19,6 +18,9 @@
     {
       "matches": [
         "https://agentank.ai/*"
+      ],
+      "css": [
+        "sidebar.css"
       ],
       "js": [
         "content.js"
