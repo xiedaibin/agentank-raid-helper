@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.0.9
+// Agentank Raid Helper — 状态机自动化引擎 v2.1.0
 // ============================================================
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
@@ -263,11 +263,17 @@ function detectState() {
   }
 
   // 3) 检测出击大厅主页面
-  // 引入极强的文本查找兜底，防止 class/ID 意外变动
-  const startBtn = $('raidStartBtn') || 
-                   document.querySelector('.raid-home-start') || 
-                   findButtonByText('开始游戏') ||
-                   document.querySelector('.raid-home-view button.raid-primary');
+  // 引入极强的串行可见性筛选，防止隐藏元素导致短路
+  let startBtn = $('raidStartBtn');
+  if (!startBtn || !isVisible(startBtn)) {
+    startBtn = document.querySelector('.raid-home-start');
+  }
+  if (!startBtn || !isVisible(startBtn)) {
+    startBtn = findButtonByText('开始游戏');
+  }
+  if (!startBtn || !isVisible(startBtn)) {
+    startBtn = document.querySelector('.raid-home-view button.raid-primary');
+  }
   
   if (startBtn && isVisible(startBtn)) {
     // 读取头部面板展示的当前星星和星屑余额
@@ -525,11 +531,17 @@ async function processAutomation() {
 
       // 如果有星星可用且出击按钮允许点击，点击开始游戏出击
       if (detected.canStart) {
-        const startBtn = $('raidStartBtn') || 
-                         document.querySelector('.raid-home-start') || 
-                         findButtonByText('开始游戏') ||
-                         document.querySelector('.raid-home-view button.raid-primary');
-        if (safeClick(startBtn, '开始游戏(主页)')) {
+        let startBtn = $('raidStartBtn');
+        if (!startBtn || !isVisible(startBtn)) {
+          startBtn = document.querySelector('.raid-home-start');
+        }
+        if (!startBtn || !isVisible(startBtn)) {
+          startBtn = findButtonByText('开始游戏');
+        }
+        if (!startBtn || !isVisible(startBtn)) {
+          startBtn = document.querySelector('.raid-home-view button.raid-primary');
+        }
+        if (startBtn && safeClick(startBtn, '开始游戏(主页)')) {
           lastStartClickTime = Date.now();
           gameState.currentLayer = 0;       // 新出击局，重置层数计数
           gameState.enhancements = {};      // 重置已获得强化列表
@@ -540,7 +552,10 @@ async function processAutomation() {
 
       // 星星归零，打开仓库自动变现/兑换
       if (detected.stars <= 0) {
-        const warehouseBtn = document.querySelector('.raid-secondary') || findButtonByText('打开仓库');
+        let warehouseBtn = document.querySelector('.raid-secondary');
+        if (!warehouseBtn || !isVisible(warehouseBtn)) {
+          warehouseBtn = findButtonByText('打开仓库');
+        }
         if (warehouseBtn && isEnabled(warehouseBtn) && isVisible(warehouseBtn)) {
           log('星星不足, 打开仓库变现/兑换', 'warn');
           safeClick(warehouseBtn, '打开仓库');
@@ -809,7 +824,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.0.9</div>
+      <div class="version-tag">v2.1.0</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
