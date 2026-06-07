@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.0.7
+// Agentank Raid Helper — 状态机自动化引擎 v2.0.8
 // ============================================================
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
@@ -776,7 +776,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.0.7</div>
+      <div class="version-tag">v2.0.8</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
