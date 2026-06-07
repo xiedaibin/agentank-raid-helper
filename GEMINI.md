@@ -19,7 +19,7 @@
 
 ```
 agentraid/
-├── manifest.json       # 插件配置文件 (MV3, 版本号 2.1.3)
+├── manifest.json       # 插件配置文件 (MV3, 版本号 2.1.4)
 ├── content.js          # 核心自动化状态机引擎 (注入页面的脚本)
 ├── popup.html          # 插件仪表盘面板 UI
 ├── popup.js            # 仪表盘数据同步与控制逻辑

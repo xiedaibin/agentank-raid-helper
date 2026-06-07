@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.1.3
+// Agentank Raid Helper — 状态机自动化引擎 v2.1.4
 // ============================================================
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
@@ -29,6 +29,7 @@ let sidebarCollapsed = false;
 let statClicksCount = 0;
 let statStartTime = null;
 let statElapsedTime = 0;
+let isLastStateUnknown = false; // 标记上一次探测是否是未知状态，防止诊断 Warn 刷屏
 
 // ── 游戏运行状态数据 ───────────────────────────────────────────────
 const gameState = {
@@ -225,8 +226,12 @@ function findButtonByText(text, container) {
  * @returns {object} 包含 state 及必要附属状态（如星星数、是否可以出击等）的对象
  */
 function detectState() {
-  // 容错兜底：若未找到主容器 .raid-shell，则降级使用 document.body 确保检测能继续进行
-  const shell = document.querySelector('.raid-shell') || document.body;
+  // 0) 核心守卫：如果当前页面不存在出击主容器 .raid-shell，说明未处于出击页面，直接静默退出
+  const shell = document.querySelector('.raid-shell');
+  if (!shell) {
+    return { state: 'UNKNOWN' };
+  }
+
   const shellClasses = Array.from(shell.classList).join(', ');
 
   // 1) 优先检测模态弹框（它们层级最高，会覆盖在基础容器之上）
@@ -304,10 +309,15 @@ function detectState() {
       visibleButtons.push(`${btn.textContent.trim()}(class: ${btn.className})`);
     }
   });
-  console.warn(`[Raid Helper Debug] detectState无法匹配任何已知状态。诊断信息：
-  - shell classList: [${shellClasses}]
-  - rewardModal显示: ${rewardShowing}
-  - 页面可见按钮: ${JSON.stringify(visibleButtons)}`);
+
+  // 只有在第一次进入未知态时，才输出警告，防控制台刷爆
+  if (!isLastStateUnknown) {
+    console.warn(`[Raid Helper Debug] detectState无法匹配任何已知状态。诊断信息：
+    - shell classList: [${shellClasses}]
+    - rewardModal显示: ${rewardShowing}
+    - 页面可见按钮: ${JSON.stringify(visibleButtons)}`);
+    isLastStateUnknown = true;
+  }
 
   return { state: 'UNKNOWN' }; // 未知态
 }
@@ -524,6 +534,7 @@ async function processAutomation() {
 
     // ─── 出击主页面大厅 ─────────────────────────────────
     case 'MAIN_PAGE': {
+      isLastStateUnknown = false;
       log(`出击大厅 | 星星: ${detected.stars} | 星屑: ${detected.dust} | canStart: ${detected.canStart}`, 'state');
 
       // 守卫一：如果此时开始游戏选择坦克的弹框已经被点出来并显现，跳转执行弹框确认逻辑
@@ -581,6 +592,7 @@ async function processAutomation() {
 
     // ─── 坦克选择与出击确认弹框 ──────────────────────────
     case 'START_CONFIRM': {
+      isLastStateUnknown = false;
       log('选择坦克确认框', 'state');
       // 如果没有选择任何坦克，默认点击选择第一个坦克（通常是默认坦克）
       const tankGrid = $('raidTankCards') || document.querySelector('.raid-tank-cards') || document.querySelector('.raid-start-card .grid');
@@ -610,11 +622,9 @@ async function processAutomation() {
 
     // ─── 战斗进行中 ────────────────────────────────
     case 'BATTLE': {
+      isLastStateUnknown = false;
       log('处于战斗中，等待关卡挑战结果...', 'state');
 
-      // 诊断：为什么没有匹配到技能选择弹框？
-      const rModal = $('raidRewardModal');
-      const firstChoice = document.querySelector('.raid-choice');
       console.log(`[Raid Helper Debug] Battle状态诊断:
         - raidRewardModal存在: ${!!rModal}
         - raidRewardModal可见性(isModalShowing): ${rModal ? isModalShowing(rModal) : 'N/A'}
@@ -629,6 +639,7 @@ async function processAutomation() {
 
     // ─── 第N层获胜：技能强化与战术撤离决策 ──────────────────────
     case 'VICTORY_CHOICE': {
+      isLastStateUnknown = false;
       const layer = detected.layer;
       gameState.currentLayer = Math.max(gameState.currentLayer, layer);
       gameState.bestDepth = Math.max(gameState.bestDepth, layer);
@@ -666,6 +677,7 @@ async function processAutomation() {
 
     // ─── 关卡遭遇战失败结算 ────────────────────────────────────────────
     case 'DEFEAT': {
+      isLastStateUnknown = false;
       log(`失败: ${detected.resultText}`, 'error');
       gameState.totalLosses++;
       gameState.currentLayer = 0;   // 战败后当前局层数重置
@@ -681,12 +693,14 @@ async function processAutomation() {
 
     // ─── 仓库物资界面 ─────────────────────────────────────────
     case 'WAREHOUSE': {
+      isLastStateUnknown = false;
       log('仓库界面', 'state');
       return handleWarehouse();
     }
 
     // ─── 过渡加载态 ───────────────────────────────────────────
     case 'LOADING': {
+      isLastStateUnknown = false;
       log('页面正在加载中，等待加载完成...', 'state');
       return POLL_BATTLE;
     }
@@ -846,7 +860,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.1.3</div>
+      <div class="version-tag">v2.1.4</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
