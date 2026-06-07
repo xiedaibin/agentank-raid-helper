@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.1.0
+// Agentank Raid Helper — 状态机自动化引擎 v2.1.1
 // ============================================================
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
@@ -232,16 +232,32 @@ function detectState() {
   // 1) 优先检测模态弹框（它们层级最高，会覆盖在基础容器之上）
   // 检查胜利/失败结算弹框
   const settlementModal = $('raidSettlementModal');
-  const settlementShowing = isModalShowing(settlementModal);
-  if (settlementShowing) {
-    return detectRewardModalState(settlementModal);
-  }
+  let settlementShowing = isModalShowing(settlementModal);
 
   // 检查选择奖励强化弹框
   const choiceModal = $('raidChoiceModal');
-  const choiceShowing = isModalShowing(choiceModal);
+  let choiceShowing = isModalShowing(choiceModal);
+
+  // 兜底一：如果页面上已经显示了可见的三选一强化按钮，强行认为 choiceModal 处于显示状态
+  const firstChoice = document.querySelector('.raid-choice');
+  if (!choiceShowing && firstChoice && isVisible(firstChoice)) {
+    choiceShowing = true;
+  }
+
+  // 兜底二：如果页面上显示了失败确认按钮，强行认为 settlementModal 处于显示状态
+  const fallbackLossBtn = $('raidLossConfirmBtn');
+  if (!settlementShowing && fallbackLossBtn && isVisible(fallbackLossBtn)) {
+    settlementShowing = true;
+  }
+
+  if (settlementShowing) {
+    const modal = settlementModal || (fallbackLossBtn && fallbackLossBtn.closest('.raid-modal')) || document.body;
+    return detectRewardModalState(modal);
+  }
+
   if (choiceShowing) {
-    return detectRewardModalState(choiceModal);
+    const modal = choiceModal || (firstChoice && firstChoice.closest('.raid-modal')) || document.body;
+    return detectRewardModalState(modal);
   }
 
   // 检查开始游戏选择坦克的弹框
@@ -601,6 +617,19 @@ async function processAutomation() {
     // ─── 战斗进行中 ────────────────────────────────
     case 'BATTLE': {
       log('处于战斗中，等待关卡挑战结果...', 'state');
+
+      // 诊断：为什么没有匹配到技能选择弹框？
+      const cModal = $('raidChoiceModal');
+      const sModal = $('raidSettlementModal');
+      const firstChoice = document.querySelector('.raid-choice');
+      console.log(`[Raid Helper Debug] Battle状态诊断:
+        - raidChoiceModal存在: ${!!cModal}
+        - raidChoiceModal可见性(isModalShowing): ${cModal ? isModalShowing(cModal) : 'N/A'}
+        - raidChoiceModal.offsetWidth: ${cModal ? cModal.offsetWidth : 'N/A'}
+        - 页面中.raid-choice选项存在: ${!!firstChoice}
+        - .raid-choice选项可见性(isVisible): ${firstChoice ? isVisible(firstChoice) : 'N/A'}
+      `);
+
       // 战斗是自动进行的，插件保持观察，延长轮询周期以降低资源占用
       return POLL_BATTLE;
     }
@@ -824,7 +853,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.1.0</div>
+      <div class="version-tag">v2.1.1</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
