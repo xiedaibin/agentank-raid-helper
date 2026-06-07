@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.1.2
+// Agentank Raid Helper — 状态机自动化引擎 v2.1.3
 // ============================================================
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
@@ -387,29 +387,34 @@ function shouldEvacuate(layer) {
   // 获取当前局拥有的备用核心数量
   const coreCount = gameState.enhancements['备用核心'] || 0;
 
-  if (layer <= 3) {
-    log(`第${layer}层: 继续挑战 (≤3层总是继续)`, 'state');
-    return false;
-  }
-  if (layer <= 5) {
-    if (coreCount === 0) {
-      log(`第${layer}层: 撤离 (无备用核心, 超过3层风险太大)`, 'warn');
-      return true;
-    }
-    log(`第${layer}层: 继续 (有${coreCount}个备用核心)`, 'state');
-    return false;
-  }
-  if (layer <= 7) {
-    if (coreCount < 2) {
-      log(`第${layer}层: 撤离 (备用核心${coreCount}<2, 超过5层风险太大)`, 'warn');
-      return true;
-    }
-    log(`第${layer}层: 继续 (有${coreCount}个备用核心)`, 'state');
+  // 1. 低层数总是继续（打完第 1, 2 层时）
+  if (layer < 3) {
+    log(`第${layer}层: 继续挑战 (<3层总是继续)`, 'state');
     return false;
   }
 
-  // 大于7层：无条件进行撤离
-  log(`第${layer}层: 撤离 (已超过7层, 保守策略)`, 'warn');
+  // 2. 第三层与第四层结算时（打完第 3, 4 层时）
+  if (layer === 3 || layer === 4) {
+    if (coreCount === 0) {
+      log(`第${layer}层胜利结算: 撤离 (无备用核心, 风险较高)`, 'warn');
+      return true;
+    }
+    log(`第${layer}层胜利结算: 继续 (已有 ${coreCount} 个备用核心，继续挑战高层)`, 'state');
+    return false;
+  }
+
+  // 3. 第五层与第六层结算时（打完第 5, 6 层时）
+  if (layer === 5 || layer === 6) {
+    if (coreCount < 2) {
+      log(`第${layer}层胜利结算: 撤离 (备用核心数 ${coreCount} < 2, 保守落袋)`, 'warn');
+      return true;
+    }
+    log(`第${layer}层胜利结算: 继续 (备用核心数已满级 ${coreCount} >= 2, 挑战终极层)`, 'state');
+    return false;
+  }
+
+  // 4. 第七层及以上结算时（无条件撤离）
+  log(`第${layer}层胜利结算: 撤离 (已达成或超过7层, 强制撤离保收益)`, 'warn');
   return true;
 }
 
@@ -841,7 +846,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.1.2</div>
+      <div class="version-tag">v2.1.3</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
