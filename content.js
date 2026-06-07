@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.0.8
+// Agentank Raid Helper — 状态机自动化引擎 v2.0.9
 // ============================================================
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
@@ -227,23 +227,27 @@ function findButtonByText(text, container) {
 function detectState() {
   // 容错兜底：若未找到主容器 .raid-shell，则降级使用 document.body 确保检测能继续进行
   const shell = document.querySelector('.raid-shell') || document.body;
+  const shellClasses = Array.from(shell.classList).join(', ');
 
   // 1) 优先检测模态弹框（它们层级最高，会覆盖在基础容器之上）
   // 检查胜利/失败结算弹框
   const settlementModal = $('raidSettlementModal');
-  if (isModalShowing(settlementModal)) {
+  const settlementShowing = isModalShowing(settlementModal);
+  if (settlementShowing) {
     return detectRewardModalState(settlementModal);
   }
 
   // 检查选择奖励强化弹框
   const choiceModal = $('raidChoiceModal');
-  if (isModalShowing(choiceModal)) {
+  const choiceShowing = isModalShowing(choiceModal);
+  if (choiceShowing) {
     return detectRewardModalState(choiceModal);
   }
 
   // 检查开始游戏选择坦克的弹框
   const startModal = $('raidStartModal') || document.querySelector('#raidStartModal');
-  if (isModalShowing(startModal)) {
+  const startShowing = isModalShowing(startModal);
+  if (startShowing) {
     return { state: 'START_CONFIRM' };
   }
 
@@ -259,7 +263,12 @@ function detectState() {
   }
 
   // 3) 检测出击大厅主页面
-  const startBtn = $('raidStartBtn') || document.querySelector('.raid-home-start');
+  // 引入极强的文本查找兜底，防止 class/ID 意外变动
+  const startBtn = $('raidStartBtn') || 
+                   document.querySelector('.raid-home-start') || 
+                   findButtonByText('开始游戏') ||
+                   document.querySelector('.raid-home-view button.raid-primary');
+  
   if (startBtn && isVisible(startBtn)) {
     // 读取头部面板展示的当前星星和星屑余额
     const stars = readNumber($('raidHeaderStarBalance'));
@@ -274,6 +283,20 @@ function detectState() {
   if (loading && isVisible(loading)) {
     return { state: 'LOADING' };
   }
+
+  // 输出调试诊断信息，帮助一步到位排查选择器问题
+  const visibleButtons = [];
+  document.querySelectorAll('button').forEach(btn => {
+    if (isVisible(btn)) {
+      visibleButtons.push(`${btn.textContent.trim()}(class: ${btn.className})`);
+    }
+  });
+  console.warn(`[Raid Helper Debug] detectState无法匹配任何已知状态。诊断信息：
+  - shell classList: [${shellClasses}]
+  - settlementModal显示: ${settlementShowing}
+  - choiceModal显示: ${choiceShowing}
+  - startModal显示: ${startShowing}
+  - 页面可见按钮: ${JSON.stringify(visibleButtons)}`);
 
   return { state: 'UNKNOWN' }; // 未知态
 }
@@ -469,6 +492,10 @@ async function processAutomation() {
   });
   // 默认开启：只有当显式设置为 false 时才不运行
   const masterActive = config.masterActive !== false;
+  
+  // 打印调试心跳日志
+  console.log(`[Raid Helper Debug] processAutomation心跳检测 | masterActive: ${masterActive}`);
+
   if (!masterActive) return POLL_SLOW;
 
   // 探测当前所在页面状态
@@ -481,7 +508,7 @@ async function processAutomation() {
 
     // ─── 出击主页面大厅 ─────────────────────────────────
     case 'MAIN_PAGE': {
-      log(`出击大厅 | 星星: ${detected.stars} | 星屑: ${detected.dust}`, 'state');
+      log(`出击大厅 | 星星: ${detected.stars} | 星屑: ${detected.dust} | canStart: ${detected.canStart}`, 'state');
 
       // 守卫一：如果此时开始游戏选择坦克的弹框已经被点出来并显现，跳转执行弹框确认逻辑
       const modalCheck = $('raidStartModal');
@@ -498,7 +525,10 @@ async function processAutomation() {
 
       // 如果有星星可用且出击按钮允许点击，点击开始游戏出击
       if (detected.canStart) {
-        const startBtn = $('raidStartBtn') || document.querySelector('.raid-home-start');
+        const startBtn = $('raidStartBtn') || 
+                         document.querySelector('.raid-home-start') || 
+                         findButtonByText('开始游戏') ||
+                         document.querySelector('.raid-home-view button.raid-primary');
         if (safeClick(startBtn, '开始游戏(主页)')) {
           lastStartClickTime = Date.now();
           gameState.currentLayer = 0;       // 新出击局，重置层数计数
@@ -555,6 +585,7 @@ async function processAutomation() {
 
     // ─── 战斗进行中 ────────────────────────────────
     case 'BATTLE': {
+      log('处于战斗中，等待关卡挑战结果...', 'state');
       // 战斗是自动进行的，插件保持观察，延长轮询周期以降低资源占用
       return POLL_BATTLE;
     }
@@ -619,11 +650,13 @@ async function processAutomation() {
 
     // ─── 过渡加载态 ───────────────────────────────────────────
     case 'LOADING': {
+      log('页面正在加载中，等待加载完成...', 'state');
       return POLL_BATTLE;
     }
 
     // ─── 未知态兜底 ───────────────────────────────────────────
     default: {
+      log('无法识别当前页面状态，已输出诊断日志，等待重新检测...', 'warn');
       return POLL_SLOW;
     }
   }
@@ -776,7 +809,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.0.8</div>
+      <div class="version-tag">v2.0.9</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
