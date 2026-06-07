@@ -747,7 +747,7 @@ const stateNames = {
 /**
  * 在游戏页面中动态创建并注入固定浮动的控制面板侧边栏
  */
-async function initSidebar() {
+function initSidebar() {
   if (typeof document === 'undefined') return;
 
   // 1. 检查是否已存在侧边栏，防止重复注入
@@ -758,28 +758,13 @@ async function initSidebar() {
   sidebar.className = 'agentank-sidebar';
   sidebar.id = 'agentankSidebar';
 
-  // 3. 从 storage 读取已保存的设置（开关、折叠状态、历史统计数据）
-  const data = await new Promise(resolve => {
-    if (isContextValid()) {
-      chrome.storage.local.get([
-        'sidebarCollapsed', 'masterActive',
-        'statStartTime', 'statElapsedTime', 'statClicks'
-      ], r => resolve(r || {}));
-    } else {
-      resolve({});
-    }
-  });
+  // 3. 初始同步默认状态（主开关默认开启，侧边栏不折叠）
+  sidebarCollapsed = false;
+  statStartTime = null;
+  statElapsedTime = 0;
+  statClicksCount = 0;
 
-  sidebarCollapsed = data.sidebarCollapsed || false;
-  if (sidebarCollapsed) {
-    sidebar.classList.add('is-collapsed');
-  }
-
-  statStartTime = data.statStartTime || null;
-  statElapsedTime = data.statElapsedTime || 0;
-  statClicksCount = data.statClicks || 0;
-
-  const isMasterActive = data.masterActive !== false; // 默认开启
+  const isMasterActive = true; // 默认开启，等待异步补丁加载
 
   // 4. 构建侧边栏内部 HTML 骨架
   sidebar.innerHTML = `
@@ -881,7 +866,42 @@ async function initSidebar() {
 
   document.body.appendChild(sidebar);
 
-  // 5. 绑定展开/收起拉手的点击事件
+  // 5. 后台异步拉取真实配置并更新 UI，不阻塞挂载与主循环流程
+  if (isContextValid()) {
+    chrome.storage.local.get([
+      'sidebarCollapsed', 'masterActive',
+      'statStartTime', 'statElapsedTime', 'statClicks'
+    ], r => {
+      if (!r) return;
+
+      // 刷新折叠状态
+      if (r.sidebarCollapsed) {
+        sidebarCollapsed = true;
+        sidebar.classList.add('is-collapsed');
+        const arrowSpan = document.getElementById('agentankSidebarToggleArrow');
+        if (arrowSpan) arrowSpan.textContent = '‹';
+      }
+
+      // 刷新主开关勾选状态（只有显式为 false 时才关闭）
+      if (r.masterActive === false) {
+        const masterSwitch = document.getElementById('sb-master-switch');
+        if (masterSwitch) masterSwitch.checked = false;
+        const statusDot = document.getElementById('sb-status-dot');
+        if (statusDot) statusDot.className = 'pulse-dot idle';
+        const statusText = document.getElementById('sb-status-text');
+        if (statusText) statusText.textContent = '未运行';
+        const statusCard = document.getElementById('sb-status-card');
+        if (statusCard) statusCard.classList.remove('active-state');
+      }
+
+      // 同步内存统计变量
+      statStartTime = r.statStartTime || null;
+      statElapsedTime = r.statElapsedTime || 0;
+      statClicksCount = r.statClicks || 0;
+    });
+  }
+
+  // 6. 绑定展开/收起拉手的点击事件
   const toggleBtn = document.getElementById('agentankSidebarToggle');
   const arrowSpan = document.getElementById('agentankSidebarToggleArrow');
   toggleBtn.addEventListener('click', () => {
