@@ -1,5 +1,16 @@
 # Agentank Raid Helper — 版本历史
 
+## v2.0.7 (2026-06-07) — 同步挂载生命周期卡死热修复
+
+> 🎯 目标：彻底修复由于 `initSidebar()` 重构为同步函数后，仍试图使用 `.then()` 链式调用导致 `TypeError: Cannot read properties of undefined` 并使引擎启动死锁的问题
+
+### 🛠️ Bug 修复
+
+- **移除 Promise 链调用**：将 `content.js` 尾部生命周期的 `initSidebar().then(...)` 恢复为纯同步串行调用，确保主循环轮询被正常拉起。
+- **同步版本标识**：更新 `content.js`、`manifest.json`、`popup.html` 以及版本日志至 `v2.0.7`。
+
+---
+
 ## v2.0.6 (2026-06-07) — 注入侧边栏异步非阻塞重构
 
 > 🎯 目标：彻底解决由于 chrome.storage.local.get 在页面初始化时异步挂起，导致生命周期 Promise 被卡在 Pending 状态而无法激活主循环的问题

@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.0.2
+// Agentank Raid Helper — 状态机自动化引擎 v2.0.7
 // ============================================================
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
 
@@ -776,7 +776,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.0.5</div>
+      <div class="version-tag">v2.0.7</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
@@ -1082,9 +1082,8 @@ function startLoop(delayMs) {
 
 // ── 插件生命周期初始化 ───────────────────────────────────────────────
 // 在页面加载后注入侧边栏
-initSidebar().then(() => {
-  startLoop(POLL_FAST); // 以快速轮询探测状态拉起运行
-});
+initSidebar();
+startLoop(POLL_FAST); // 以快速轮询探测状态拉起运行
 
 // 监听通信消息（保留向后兼容）
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
