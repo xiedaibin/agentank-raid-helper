@@ -28,6 +28,10 @@ const gameState = {
   lastActionTime: 0,
 };
 
+function isContextValid() {
+  return typeof chrome !== 'undefined' && chrome.runtime && !!chrome.runtime.id;
+}
+
 // ── Logging ──────────────────────────────────────────────────
 const MAX_LOG_ENTRIES = 60;
 const logEntries = [];
@@ -48,7 +52,13 @@ function log(msg, level = 'info') {
   console.log(`%c[Raid Helper][${ts}] ${msg}`, colors[level] || colors.info);
 
   // Persist log to storage for popup
-  chrome.storage.local.set({ raidLog: logEntries.slice(-20) });
+  if (isContextValid()) {
+    try {
+      chrome.storage.local.set({ raidLog: logEntries.slice(-20) });
+    } catch (e) {
+      console.warn('[Raid Helper] Failed to save logs to storage:', e.message);
+    }
+  }
 }
 
 // ── Click cooldown tracker ───────────────────────────────────
@@ -74,9 +84,16 @@ function safeClick(element, label) {
   gameState.lastActionTime = now;
 
   // Bump click counter
-  chrome.storage.local.get('statClicks', (r) => {
-    chrome.storage.local.set({ statClicks: (r.statClicks || 0) + 1 });
-  });
+  if (isContextValid()) {
+    try {
+      chrome.storage.local.get('statClicks', (r) => {
+        if (!isContextValid()) return;
+        chrome.storage.local.set({ statClicks: (r.statClicks || 0) + 1 });
+      });
+    } catch (e) {
+      console.warn('[Raid Helper] Failed to update click statistics:', e.message);
+    }
+  }
 
   return true;
 }
@@ -337,9 +354,22 @@ function selectEnhancement(enhancements) {
 // ── Main Automation Loop ─────────────────────────────────────
 
 async function processAutomation() {
+  if (!isContextValid()) return POLL_SLOW;
   // Check master switch
   const config = await new Promise(resolve => {
-    chrome.storage.local.get(['masterActive'], resolve);
+    try {
+      chrome.storage.local.get(['masterActive'], items => {
+        if (!isContextValid()) {
+          resolve({ masterActive: false });
+        } else if (chrome.runtime.lastError) {
+          resolve({ masterActive: false });
+        } else {
+          resolve(items || {});
+        }
+      });
+    } catch (e) {
+      resolve({ masterActive: false });
+    }
   });
   if (!config.masterActive) return POLL_SLOW;
 
@@ -575,19 +605,24 @@ function handleWarehouse() {
 // ── Sync State to Storage ────────────────────────────────────
 
 function syncStateToStorage(detected) {
-  chrome.storage.local.set({
-    raidState: detected.state,
-    raidLayer: gameState.currentLayer,
-    raidEnhancements: gameState.enhancements,
-    raidStars: gameState.stars,
-    raidDust: gameState.dust,
-    raidTotalRuns: gameState.totalRuns,
-    raidTotalWins: gameState.totalWins,
-    raidTotalEvacuations: gameState.totalEvacuations,
-    raidTotalLosses: gameState.totalLosses,
-    raidBestDepth: gameState.bestDepth,
-    raidLastAction: gameState.lastAction,
-  });
+  if (!isContextValid()) return;
+  try {
+    chrome.storage.local.set({
+      raidState: detected.state,
+      raidLayer: gameState.currentLayer,
+      raidEnhancements: gameState.enhancements,
+      raidStars: gameState.stars,
+      raidDust: gameState.dust,
+      raidTotalRuns: gameState.totalRuns,
+      raidTotalWins: gameState.totalWins,
+      raidTotalEvacuations: gameState.totalEvacuations,
+      raidTotalLosses: gameState.totalLosses,
+      raidBestDepth: gameState.bestDepth,
+      raidLastAction: gameState.lastAction,
+    });
+  } catch (e) {
+    console.warn('[Raid Helper] Failed to sync state to storage:', e.message);
+  }
 }
 
 // ── Adaptive Loop Runner ─────────────────────────────────────
@@ -601,13 +636,20 @@ function startLoop(delayMs) {
   const actualDelay = Math.max(500, (delayMs || POLL_FAST) + jitter);
 
   loopTimer = setTimeout(async () => {
+    if (!isContextValid()) {
+      console.log('%c[Raid Helper] Extension context invalidated. Stopping loop.', 'color: #ef4444; font-weight: bold;');
+      return; // Gracefully terminate the background loop
+    }
     try {
       const nextDelay = await processAutomation();
+      if (!isContextValid()) return;
       startLoop(nextDelay);
     } catch (err) {
-      console.error('[Raid Helper] Error:', err);
-      log(`错误: ${err.message}`, 'error');
-      startLoop(POLL_SLOW);
+      console.error('[Raid Helper] Error in loop:', err);
+      if (isContextValid()) {
+        log(`错误: ${err.message}`, 'error');
+        startLoop(POLL_SLOW);
+      }
     }
   }, actualDelay);
 }

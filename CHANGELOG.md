@@ -1,5 +1,17 @@
 # Agentank Raid Helper — 版本历史
 
+## v2.0.2 (2026-06-07) — 插件重载上下文失效防御热修复
+
+> 🎯 目标：彻底解决由于 Chrome 插件重新加载导致老旧 content script 轮询抛出 `Extension context invalidated` 异常的问题
+
+### 🛠️ Bug 修复与优化
+
+- **扩展上下文校验 (`isContextValid`)**：引入统一的上下文合法性检测，在涉及 Chrome Storage (`chrome.storage.local`) 及 Extension API 调用前拦截检查。
+- **自动循环终止机制**：若检测到当前扩展上下文已失效（插件被重载/更新），则立即、优雅地终止旧的 `setTimeout` 循环，阻止多余的网络/内存开销及报错。
+- **异常捕获容错**：在 `log`、`syncStateToStorage` 等高频调用里增加 try-catch 块，确保在任何边缘场景下均不会抛出未捕获的运行时错误。
+
+---
+
 ## v2.0.1 (2026-06-07) — 混合选择器容错修复
 
 > 🎯 目标：解决在真实运行时部分 DOM 元素缺少 ID 导致无法点击的 bug
