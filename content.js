@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.2.2
+// Agentank Raid Helper — 状态机自动化引擎 v2.2.3
 // ============================================================
 
 // 控制台常规日志开关：true 允许输出调试日志，false 统一关闭常规调试日志（console.log / console.warn）
@@ -884,7 +884,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.2.2</div>
+      <div class="version-tag">v2.2.3</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
