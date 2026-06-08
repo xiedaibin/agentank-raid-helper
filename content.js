@@ -895,7 +895,7 @@ function initSidebar() {
     <header class="app-header">
       <div class="logo-area">
         <span class="logo-glow"></span>
-        <h1 class="logo-text">Agentank <span>Raid</span></h1>
+        <h1 class="logo-text">Agentank Raid <span>Helper</span></h1>
       </div>
       <div class="version-tag">v2.2.8</div>
     </header>
