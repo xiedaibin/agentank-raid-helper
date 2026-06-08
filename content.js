@@ -1,13 +1,13 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.2.3
+// Agentank Raid Helper — 状态机自动化引擎 v2.2.8
 // ============================================================
 
 // 控制台常规日志开关：true 允许输出调试日志，false 统一关闭常规调试日志（console.log / console.warn）
 const ENABLE_LOG = false;
 
 if (!ENABLE_LOG) {
-  console.log = () => {};
-  console.warn = () => {};
+  console.log = () => { };
+  console.warn = () => { };
 }
 
 console.log('%c[Raid Helper] v2.0 — 状态机引擎已加载。', 'color: #00f2fe; font-weight: bold;');
@@ -28,6 +28,14 @@ const POLL_FAST = 1500;   // 1.5秒 — 菜单和模态框的检测频率
 const POLL_BATTLE = 4000;   // 4秒   — 战斗进行中的检测频率（降低频率以减少资源占用）
 const POLL_SLOW = 3000;   // 3秒   — 兜底/未知状态的检测频率
 const CLICK_COOLDOWN = 1800; // 点击冷却时间（毫秒），防止按钮被快速重复点击
+
+// 战术撤离层数配置默认值
+const defaultEvacConfig = {
+  stage1Layer: 3,  // 阶段一结算关卡（核心不足1个时撤离）
+  stage2Layer: 5,  // 阶段二结算关卡（核心不足2个时撤离）
+  maxLayer: 7      // 强制撤离关卡（无条件撤离）
+};
+let evacConfig = { ...defaultEvacConfig };
 
 // 强化技能选择优先级（数组下标越小，优先级越高）
 // “备用核心”具有绝对最高优先级，在代码中进行了特殊判断和处理，不在此列表中
@@ -296,7 +304,7 @@ function detectState() {
   if (!startBtn || !isVisible(startBtn)) {
     startBtn = document.querySelector('.raid-home-view button.raid-primary');
   }
-  
+
   if (startBtn && isVisible(startBtn)) {
     // 读取头部面板展示的当前星星和星屑余额
     const stars = readNumber($('raidHeaderStarBalance'));
@@ -396,45 +404,50 @@ function detectRewardModalState(modal) {
 
 /**
  * 战术撤离逻辑评估（依据 remark.md 约定的低风险收益最大化模型设计）：
- * - 层数 <= 3：必定不撤离（前3关绝对安全且用于堆战力，选择强化继续挑战）
- * - 第 3 层挑战胜利：如果备用核心累计数量 == 0（无复活核心），立即撤离并保存；若 >= 1，尝试挑战到第 5 层
- * - 第 5 层挑战胜利：如果备用核心累计数量 < 2（核心命数少于2），立即撤离并保存；若 >= 2，尝试挑战到第 7 层
- * - 第 7 层挑战胜利：无条件选择撤离并保存（稳健保分锁收益）
+ * - 层数 < stage1Layer：必定不撤离（前置关卡绝对安全且用于堆战力，选择强化继续挑战）
+ * - 阶段一结算（[stage1Layer, stage2Layer)）：如果预期备用核心累计数量 == 0（无复活核心且本次也选不到），立即撤离并保存
+ * - 阶段二结算（[stage2Layer, maxLayer)）：如果预期备用核心累计数量 < 2（核心命数少于2且本次也选不到以满级），立即撤离并保存
+ * - 达到或超过 maxLayer 层：无条件选择撤离并保存（稳健保分锁收益）
  * @param {number} layer 当前胜利的关卡层数
+ * @param {array} enhancements 当前可选的强化列表
  * @returns {boolean} 是否应该撤离并保存
  */
-function shouldEvacuate(layer) {
+function shouldEvacuate(layer, enhancements = []) {
   // 获取当前局拥有的备用核心数量
   const coreCount = gameState.enhancements['备用核心'] || 0;
+  // 检查当前三选一强化技能中是否包含尚未满级的“备用核心”
+  const hasCoreInChoices = enhancements.some(e => e.name.includes('备用核心') && e.currentLv < e.maxLv);
+  // 计算加上本次可能选到的核心后的预期核心数
+  const potentialCoreCount = coreCount + (hasCoreInChoices ? 1 : 0);
 
-  // 1. 低层数总是继续（打完第 1, 2 层时）
-  if (layer < 3) {
-    log(`第${layer}层: 继续挑战 (<3层总是继续)`, 'state');
+  // 1. 低于阶段一设定的层数总是继续
+  if (layer < evacConfig.stage1Layer) {
+    log(`第${layer}层: 继续挑战 (<${evacConfig.stage1Layer}层总是继续)`, 'state');
     return false;
   }
 
-  // 2. 第三层与第四层结算时（打完第 3, 4 层时）
-  if (layer === 3 || layer === 4) {
-    if (coreCount === 0) {
-      log(`第${layer}层胜利结算: 撤离 (无备用核心, 风险较高)`, 'warn');
+  // 2. 第一阶段结算层数判定范围内
+  if (layer >= evacConfig.stage1Layer && layer < evacConfig.stage2Layer) {
+    if (potentialCoreCount === 0) {
+      log(`第${layer}层胜利结算: 撤离 (无备用核心且当前无可选择核心, 风险较高)`, 'warn');
       return true;
     }
-    log(`第${layer}层胜利结算: 继续 (已有 ${coreCount} 个备用核心，继续挑战高层)`, 'state');
+    log(`第${layer}层胜利结算: 继续 (预期拥有 ${potentialCoreCount} 个备用核心，继续挑战高层)`, 'state');
     return false;
   }
 
-  // 3. 第五层与第六层结算时（打完第 5, 6 层时）
-  if (layer === 5 || layer === 6) {
-    if (coreCount < 2) {
-      log(`第${layer}层胜利结算: 撤离 (备用核心数 ${coreCount} < 2, 保守落袋)`, 'warn');
+  // 3. 第二阶段结算层数判定范围内
+  if (layer >= evacConfig.stage2Layer && layer < evacConfig.maxLayer) {
+    if (potentialCoreCount < 2) {
+      log(`第${layer}层胜利结算: 撤离 (预期备用核心数 ${potentialCoreCount} < 2, 保守落袋)`, 'warn');
       return true;
     }
-    log(`第${layer}层胜利结算: 继续 (备用核心数已满级 ${coreCount} >= 2, 挑战终极层)`, 'state');
+    log(`第${layer}层胜利结算: 继续 (预期备用核心数已满级 ${potentialCoreCount} >= 2, 挑战终极层)`, 'state');
     return false;
   }
 
-  // 4. 第七层及以上结算时（无条件撤离）
-  log(`第${layer}层胜利结算: 撤离 (已达成或超过7层, 强制撤离保收益)`, 'warn');
+  // 4. 达到或超过最大强制撤离层数
+  log(`第${layer}层胜利结算: 撤离 (已达成或超过${evacConfig.maxLayer}层, 强制撤离保收益)`, 'warn');
   return true;
 }
 
@@ -528,7 +541,7 @@ async function processAutomation() {
   });
   // 默认开启：只有当显式设置为 false 时才不运行
   const masterActive = config.masterActive !== false;
-  
+
   // 打印调试心跳日志
   console.log(`[Raid Helper Debug] processAutomation心跳检测 | masterActive: ${masterActive}`);
 
@@ -666,7 +679,7 @@ async function processAutomation() {
       log(`第${layer}层胜利! 可选强化: ${detected.enhancements.map(e => e.name).join(', ')}`, 'info');
 
       // 智能评估当前层数和命数是否满足撤退策略，若满则执行撤退落袋为安
-      if (detected.canEscape && shouldEvacuate(layer)) {
+      if (detected.canEscape && shouldEvacuate(layer, detected.enhancements)) {
         safeClick(detected.escapeBtn, '撤离并保存');
         gameState.totalEvacuations++;
         log(`第${layer}层撤离! 总撤离次数: ${gameState.totalEvacuations}`, 'warn');
@@ -884,7 +897,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.2.3</div>
+      <div class="version-tag">v2.2.8</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
@@ -925,6 +938,29 @@ function initSidebar() {
         <div class="state-row">
           <span class="state-label">最近操作</span>
           <span class="state-value small" id="sb-last-action">—</span>
+        </div>
+      </div>
+    </section>
+    <section class="section">
+      <h2 class="section-title">撤离设置</h2>
+      <div class="state-card">
+        <div class="state-row">
+          <span class="state-label">阶段一结算层数</span>
+          <input type="number" id="sb-cfg-stage1-layer" class="sb-input-num" min="1" max="15" value="${evacConfig.stage1Layer}">
+        </div>
+        <div class="state-row" style="margin-top: -2px; margin-bottom: 4px;">
+          <span class="sb-tip-text">ℹ️ 备用核心要求固定默认：&lt; 1 个</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">阶段二结算层数</span>
+          <input type="number" id="sb-cfg-stage2-layer" class="sb-input-num" min="1" max="15" value="${evacConfig.stage2Layer}">
+        </div>
+        <div class="state-row" style="margin-top: -2px; margin-bottom: 4px;">
+          <span class="sb-tip-text">ℹ️ 备用核心要求固定默认：&lt; 2 个</span>
+        </div>
+        <div class="state-row">
+          <span class="state-label">强制撤离层数</span>
+          <input type="number" id="sb-cfg-max-layer" class="sb-input-num" min="1" max="20" value="${evacConfig.maxLayer}">
         </div>
       </div>
     </section>
@@ -982,7 +1018,8 @@ function initSidebar() {
   if (isContextValid()) {
     chrome.storage.local.get([
       'sidebarCollapsed', 'masterActive',
-      'statStartTime', 'statElapsedTime', 'statClicks'
+      'statStartTime', 'statElapsedTime', 'statClicks',
+      'raidEvacConfig'
     ], r => {
       if (!r) return;
 
@@ -1010,6 +1047,17 @@ function initSidebar() {
       statStartTime = r.statStartTime || null;
       statElapsedTime = r.statElapsedTime || 0;
       statClicksCount = r.statClicks || 0;
+
+      // 同步撤离设置变量并回填 UI
+      if (r.raidEvacConfig) {
+        evacConfig = { ...evacConfig, ...r.raidEvacConfig };
+        const inStage1 = document.getElementById('sb-cfg-stage1-layer');
+        if (inStage1) inStage1.value = evacConfig.stage1Layer;
+        const inStage2 = document.getElementById('sb-cfg-stage2-layer');
+        if (inStage2) inStage2.value = evacConfig.stage2Layer;
+        const inMax = document.getElementById('sb-cfg-max-layer');
+        if (inMax) inMax.value = evacConfig.maxLayer;
+      }
     });
   }
 
@@ -1029,6 +1077,30 @@ function initSidebar() {
       chrome.storage.local.set({ sidebarCollapsed });
     }
   });
+
+  // 7. 绑定撤离设置输入框的 change 监听与持久化
+  const inStage1 = document.getElementById('sb-cfg-stage1-layer');
+  const inStage2 = document.getElementById('sb-cfg-stage2-layer');
+  const inMax = document.getElementById('sb-cfg-max-layer');
+
+  const saveEvacConfig = () => {
+    const stage1 = parseInt(inStage1.value, 10) || defaultEvacConfig.stage1Layer;
+    const stage2 = parseInt(inStage2.value, 10) || defaultEvacConfig.stage2Layer;
+    const maxL = parseInt(inMax.value, 10) || defaultEvacConfig.maxLayer;
+    evacConfig = {
+      stage1Layer: stage1,
+      stage2Layer: stage2,
+      maxLayer: maxL
+    };
+    if (isContextValid()) {
+      chrome.storage.local.set({ raidEvacConfig: evacConfig });
+    }
+    log(`撤离层数配置更新: 阶段一 ${stage1}层(核心<1), 阶段二 ${stage2}层(核心<2), 强撤 ${maxL}层`, 'info');
+  };
+
+  if (inStage1) inStage1.addEventListener('change', saveEvacConfig);
+  if (inStage2) inStage2.addEventListener('change', saveEvacConfig);
+  if (inMax) inMax.addEventListener('change', saveEvacConfig);
 
   // 6. 绑定控制台主开关的勾选改变事件
   const masterSwitch = document.getElementById('sb-master-switch');
