@@ -538,3 +538,93 @@ input:checked+.slider::before {
   font-style: italic;
   line-height: 1.1;
 }
+
+/* 原生拖动排序样式 */
+.drag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.drag-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  font-size: 0.72rem;
+  color: var(--sb-color-text-main);
+  cursor: grab;
+  user-select: none;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.drag-item:hover {
+  background-color: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.drag-item:active {
+  cursor: grabbing;
+}
+
+.drag-item.dragging {
+  opacity: 0.35;
+  background-color: rgba(0, 150, 255, 0.15) !important;
+  border-color: rgba(0, 150, 255, 0.35) !important;
+  box-shadow: 0 0 10px rgba(0, 150, 255, 0.25);
+}
+
+.drag-handle {
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--sb-color-text-muted);
+  font-weight: bold;
+  cursor: grab;
+}
+
+/* Tab 导航与分栏面板样式 */
+.sb-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--sb-border-color);
+  padding-bottom: 6px;
+}
+
+.sb-tab-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--sb-border-color);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--sb-color-text-muted);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.sb-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sb-color-text-main);
+  border-color: var(--sb-border-hover);
+}
+
+.sb-tab-btn.active {
+  background: rgba(0, 150, 255, 0.15);
+  border-color: rgba(0, 150, 255, 0.35);
+  color: var(--sb-color-accent);
+  box-shadow: 0 0 10px rgba(0, 150, 255, 0.15);
+  text-shadow: 0 0 8px rgba(0, 150, 255, 0.3);
+}
+
+.sb-tab-panel.sb-hidden {
+  display: none !important;
+}
+

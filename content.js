@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.2.8
+// Agentank Raid Helper — 状态机自动化引擎 v2.2.12
 // ============================================================
 
 // 控制台常规日志开关：true 允许输出调试日志，false 统一关闭常规调试日志（console.log / console.warn）
@@ -37,9 +37,15 @@ const defaultEvacConfig = {
 };
 let evacConfig = { ...defaultEvacConfig };
 
-// 强化技能选择优先级（数组下标越小，优先级越高）
+// 快速装填最大获取次数配置，默认2
+let rapidReloadMax = 2;
+
+// 强化技能选择优先级（可通过拖拽自定义，默认顺序如下，下标越小优先级越高）
 // “备用核心”具有绝对最高优先级，在代码中进行了特殊判断和处理，不在此列表中
-const ENHANCE_PRIORITY = ['自动护盾', '宝物磁场', '技能冷却', '开局推进'];
+let enhancePriority = ['自动护盾', '宝物磁场', '技能冷却', '开局推进'];
+
+// 侧边栏拖拽列表重绘函数全局引用，方便消息回调中调用
+let renderSidebarPriorityList = null;
 
 // ── 侧边栏及运行时长统计全局变量 ─────────────────────────────────
 let sidebarCollapsed = false;
@@ -454,8 +460,9 @@ function shouldEvacuate(layer, enhancements = []) {
 /**
  * 强化技能选择器（依据 remark.md 中规定的重要度等级）：
  * 1. 首要选：只要出现“备用核心”，必选之（直到满级 Lv.2），复活命数最为关键。
- * 2. 补漏选：确保“自动护盾”、“宝物磁场”、“技能冷却”、“开局推进”这四种辅助芯片至少已经选择过一次（激活基础效果）。
- * 3. 优选升：若所有辅助技能都已持有一级以上，则按照升级重要度排序进行升级：
+ * 2. 次要选：其次是“快速装填”，除了“备用核心”之外无条件必选之（直到满级 Lv.3），允许场上有多发子弹。
+ * 3. 补漏选：确保“自动护盾”、“宝物磁场”、“技能冷却”、“开局推进”这四种辅助芯片至少已经选择过一次（激活基础效果）。
+ * 4. 优选升：若所有辅助技能都已持有一级以上，则按照升级重要度排序进行升级：
  *    自动护盾 (防暴毙) > 宝物磁场 (吸钱增收益) > 技能冷却 (提高输出效率) > 开局推进 (速通拉怪)
  * @param {array} enhancements 可选的强化列表
  * @returns {object|null} 选择的技能对象
@@ -470,7 +477,14 @@ function selectEnhancement(enhancements) {
     return core;
   }
 
-  // 2. 筛选未曾选择过的技能（即当前局累计选择次数为 0 且未满级的技能）
+  // 2. 其次筛选“快速装填”（除了备用核心之外必选，且当前等级未达到用户配置的次数限制）
+  const reload = enhancements.find(e => e.name.includes('快速装填') && e.currentLv < e.maxLv && e.currentLv < rapidReloadMax);
+  if (reload) {
+    log(`选择强化: 快速装填 (次高优先级，当前等级 ${reload.currentLv}/${rapidReloadMax})`, 'action');
+    return reload;
+  }
+
+  // 3. 筛选未曾选择过的技能（即当前局累计选择次数为 0 且未满级的技能）
   const unpicked = enhancements.filter(e => {
     const ownedCount = gameState.enhancements[e.name] || 0;
     return ownedCount === 0 && e.currentLv < e.maxLv;
@@ -478,7 +492,7 @@ function selectEnhancement(enhancements) {
 
   if (unpicked.length > 0) {
     // 按照指定的核心技能优先级顺序依次查漏补缺
-    for (const priorityName of ENHANCE_PRIORITY) {
+    for (const priorityName of enhancePriority) {
       const match = unpicked.find(e => e.name.includes(priorityName));
       if (match) {
         log(`选择强化: ${match.name} (首次选择)`, 'action');
@@ -490,8 +504,8 @@ function selectEnhancement(enhancements) {
     return unpicked[0];
   }
 
-  // 3. 所有可选辅助技能都至少有了一级，按照优先级重要度由高到低选择升级
-  for (const priorityName of ENHANCE_PRIORITY) {
+  // 4. 所有可选辅助技能都至少有了一级，按照优先级重要度由高到低选择升级
+  for (const priorityName of enhancePriority) {
     const match = enhancements.find(e => e.name.includes(priorityName) && e.currentLv < e.maxLv);
     if (match) {
       log(`选择强化: ${match.name} (优先级选择)`, 'action');
@@ -499,14 +513,14 @@ function selectEnhancement(enhancements) {
     }
   }
 
-  // 4. 兜底策略：选择任意一个未满级的强化
+  // 5. 兜底策略：选择任意一个未满级的强化
   const any = enhancements.find(e => e.currentLv < e.maxLv);
   if (any) {
     log(`选择强化: ${any.name} (兜底选择)`, 'action');
     return any;
   }
 
-  // 5. 极端情况（所有推荐都已经满级）：选择可选列表中的第一个
+  // 6. 极端情况（所有推荐都已经满级）：选择可选列表中的第一个
   if (enhancements.length > 0) {
     log(`选择强化: ${enhancements[0].name} (全部满级，随意选择)`, 'action');
     return enhancements[0];
@@ -776,7 +790,6 @@ function handleWarehouse() {
   gameState.stars = stars;
   gameState.dust = dust;
 
-  // 如果没有星星但是还有星屑，在仓库中向星星兑换器写入 "1" 并点击兑换一星，控制星屑投资的浪费
   if (stars <= 0 && dust > 0) {
     const exchangeBtn = findButtonByText('兑换星星') || document.querySelector('.raid-warehouse-view button.raid-primary');
     if (exchangeBtn && isEnabled(exchangeBtn)) {
@@ -897,7 +910,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank Raid <span>Helper</span></h1>
       </div>
-      <div class="version-tag">v2.2.8</div>
+      <div class="version-tag">v2.2.12</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">
@@ -912,101 +925,132 @@ function initSidebar() {
         </label>
       </div>
     </div>
-    <section class="section">
-      <h2 class="section-title">实时状态</h2>
-      <div class="state-card">
-        <div class="state-row">
-          <span class="state-label">当前阶段</span>
-          <span class="state-value" id="sb-current-state">—</span>
+    <div class="sb-tabs">
+      <button class="sb-tab-btn active" id="sb-tab-monitor">📊 运行监控</button>
+      <button class="sb-tab-btn" id="sb-tab-settings">⚙️ 挂机设置</button>
+    </div>
+
+    <!-- 运行监控大面板 -->
+    <div id="sb-panel-monitor" class="sb-tab-panel">
+      <section class="section">
+        <h2 class="section-title">实时状态</h2>
+        <div class="state-card">
+          <div class="state-row">
+            <span class="state-label">当前阶段</span>
+            <span class="state-value" id="sb-current-state">—</span>
+          </div>
+          <div class="state-row">
+            <span class="state-label">当前层数</span>
+            <span class="state-value highlight" id="sb-current-layer">0</span>
+          </div>
+          <div class="state-row">
+            <span class="state-label">⭐ 星星</span>
+            <span class="state-value" id="sb-current-stars">0</span>
+          </div>
+          <div class="state-row">
+            <span class="state-label">✨ 星屑</span>
+            <span class="state-value" id="sb-current-dust">0</span>
+          </div>
+          <div class="state-row">
+            <span class="state-label">📊 星屑盈亏</span>
+            <span class="state-value" id="sb-dust-profit">—</span>
+          </div>
+          <div class="state-row">
+            <span class="state-label">最近操作</span>
+            <span class="state-value small" id="sb-last-action">—</span>
+          </div>
         </div>
-        <div class="state-row">
-          <span class="state-label">当前层数</span>
-          <span class="state-value highlight" id="sb-current-layer">0</span>
+      </section>
+      <section class="section">
+        <h2 class="section-title">当前强化</h2>
+        <div class="enhance-list" id="sb-enhance-list">
+          <span class="enhance-empty">暂无强化</span>
         </div>
-        <div class="state-row">
-          <span class="state-label">⭐ 星星</span>
-          <span class="state-value" id="sb-current-stars">0</span>
+      </section>
+      <section class="section">
+        <h2 class="section-title">战绩统计</h2>
+        <div class="stats-container">
+          <div class="stat-box">
+            <span class="stat-val" id="sb-stat-runs">0</span>
+            <span class="stat-lbl">总出击</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-val" id="sb-stat-best-depth">0</span>
+            <span class="stat-lbl">最高层</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-val" id="sb-stat-evacuations">0</span>
+            <span class="stat-lbl">撤离次</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-val" id="sb-stat-losses">0</span>
+            <span class="stat-lbl">失败次</span>
+          </div>
         </div>
-        <div class="state-row">
-          <span class="state-label">✨ 星屑</span>
-          <span class="state-value" id="sb-current-dust">0</span>
+        <div class="stats-container" style="margin-top: 4px;">
+          <div class="stat-box">
+            <span class="stat-val" id="sb-stat-clicks">0</span>
+            <span class="stat-lbl">点击次数</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-val" id="sb-stat-time">00:00:00</span>
+            <span class="stat-lbl">运行时长</span>
+          </div>
         </div>
-        <div class="state-row">
-          <span class="state-label">📊 星屑盈亏</span>
-          <span class="state-value" id="sb-dust-profit">—</span>
+      </section>
+      <section class="section">
+        <h2 class="section-title">操作日志</h2>
+        <div class="log-container" id="sb-log-container">
+          <div class="log-empty">等待启动...</div>
         </div>
-        <div class="state-row">
-          <span class="state-label">最近操作</span>
-          <span class="state-value small" id="sb-last-action">—</span>
+      </section>
+    </div>
+
+    <!-- 挂机设置大面板 -->
+    <div id="sb-panel-settings" class="sb-tab-panel sb-hidden">
+      <section class="section">
+        <h2 class="section-title">撤离设置</h2>
+        <div class="state-card">
+          <div class="state-row">
+            <span class="state-label">阶段一结算层数</span>
+            <input type="number" id="sb-cfg-stage1-layer" class="sb-input-num" min="1" max="15" value="${evacConfig.stage1Layer}">
+          </div>
+          <div class="state-row" style="margin-top: -2px; margin-bottom: 4px;">
+            <span class="sb-tip-text">ℹ️ 备用核心要求固定默认：&lt; 1 个</span>
+          </div>
+          <div class="state-row">
+            <span class="state-label">阶段二结算层数</span>
+            <input type="number" id="sb-cfg-stage2-layer" class="sb-input-num" min="1" max="15" value="${evacConfig.stage2Layer}">
+          </div>
+          <div class="state-row" style="margin-top: -2px; margin-bottom: 4px;">
+            <span class="sb-tip-text">ℹ️ 备用核心要求固定默认：&lt; 2 个</span>
+          </div>
+          <div class="state-row">
+            <span class="state-label">强制撤离层数</span>
+            <input type="number" id="sb-cfg-max-layer" class="sb-input-num" min="1" max="20" value="${evacConfig.maxLayer}">
+          </div>
         </div>
-      </div>
-    </section>
-    <section class="section">
-      <h2 class="section-title">撤离设置</h2>
-      <div class="state-card">
-        <div class="state-row">
-          <span class="state-label">阶段一结算层数</span>
-          <input type="number" id="sb-cfg-stage1-layer" class="sb-input-num" min="1" max="15" value="${evacConfig.stage1Layer}">
+      </section>
+      <section class="section">
+        <h2 class="section-title">技能设置</h2>
+        <div class="state-card">
+          <div class="state-row">
+            <span class="state-label">快速装填最大次数</span>
+            <input type="number" id="sb-cfg-rapid-reload-max" class="sb-input-num" min="0" max="3" value="${rapidReloadMax}">
+          </div>
+          <div class="state-row" style="margin-top: -2px;">
+            <span class="sb-tip-text">ℹ️ 快速装填必选次数限制，默认2次</span>
+          </div>
+          <div class="state-row" style="flex-direction: column; align-items: stretch; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.05);">
+            <span class="state-label" style="margin-bottom: 4px;">二次升级优先级 (按住 ☰ 拖拽排序)</span>
+            <div class="drag-list" id="sb-drag-priority-list">
+              <!-- 动态渲染拖放元素 -->
+            </div>
+          </div>
         </div>
-        <div class="state-row" style="margin-top: -2px; margin-bottom: 4px;">
-          <span class="sb-tip-text">ℹ️ 备用核心要求固定默认：&lt; 1 个</span>
-        </div>
-        <div class="state-row">
-          <span class="state-label">阶段二结算层数</span>
-          <input type="number" id="sb-cfg-stage2-layer" class="sb-input-num" min="1" max="15" value="${evacConfig.stage2Layer}">
-        </div>
-        <div class="state-row" style="margin-top: -2px; margin-bottom: 4px;">
-          <span class="sb-tip-text">ℹ️ 备用核心要求固定默认：&lt; 2 个</span>
-        </div>
-        <div class="state-row">
-          <span class="state-label">强制撤离层数</span>
-          <input type="number" id="sb-cfg-max-layer" class="sb-input-num" min="1" max="20" value="${evacConfig.maxLayer}">
-        </div>
-      </div>
-    </section>
-    <section class="section">
-      <h2 class="section-title">当前强化</h2>
-      <div class="enhance-list" id="sb-enhance-list">
-        <span class="enhance-empty">暂无强化</span>
-      </div>
-    </section>
-    <section class="section">
-      <h2 class="section-title">战绩统计</h2>
-      <div class="stats-container">
-        <div class="stat-box">
-          <span class="stat-val" id="sb-stat-runs">0</span>
-          <span class="stat-lbl">总出击</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-val" id="sb-stat-best-depth">0</span>
-          <span class="stat-lbl">最高层</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-val" id="sb-stat-evacuations">0</span>
-          <span class="stat-lbl">撤离次</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-val" id="sb-stat-losses">0</span>
-          <span class="stat-lbl">失败次</span>
-        </div>
-      </div>
-      <div class="stats-container" style="margin-top: 4px;">
-        <div class="stat-box">
-          <span class="stat-val" id="sb-stat-clicks">0</span>
-          <span class="stat-lbl">点击次数</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-val" id="sb-stat-time">00:00:00</span>
-          <span class="stat-lbl">运行时长</span>
-        </div>
-      </div>
-    </section>
-    <section class="section">
-      <h2 class="section-title">操作日志</h2>
-      <div class="log-container" id="sb-log-container">
-        <div class="log-empty">等待启动...</div>
-      </div>
-    </section>
+      </section>
+    </div>
+
     <footer class="app-footer">
       <p>🎯 目标: 赢取更多星屑</p>
     </footer>
@@ -1014,12 +1058,39 @@ function initSidebar() {
 
   document.body.appendChild(sidebar);
 
+  // 选项卡切换事件绑定与逻辑
+  const tabMonitor = document.getElementById('sb-tab-monitor');
+  const tabSettings = document.getElementById('sb-tab-settings');
+  const panelMonitor = document.getElementById('sb-panel-monitor');
+  const panelSettings = document.getElementById('sb-panel-settings');
+
+  const switchTab = (tabName) => {
+    if (tabName === 'settings') {
+      tabMonitor.classList.remove('active');
+      tabSettings.classList.add('active');
+      panelMonitor.classList.add('sb-hidden');
+      panelSettings.classList.remove('sb-hidden');
+    } else {
+      tabMonitor.classList.add('active');
+      tabSettings.classList.remove('active');
+      panelMonitor.classList.remove('sb-hidden');
+      panelSettings.classList.add('sb-hidden');
+    }
+    if (isContextValid()) {
+      chrome.storage.local.set({ sidebarActiveTab: tabName });
+    }
+  };
+
+  tabMonitor.addEventListener('click', () => switchTab('monitor'));
+  tabSettings.addEventListener('click', () => switchTab('settings'));
+
   // 5. 后台异步拉取真实配置并更新 UI，不阻塞挂载与主循环流程
   if (isContextValid()) {
     chrome.storage.local.get([
       'sidebarCollapsed', 'masterActive',
       'statStartTime', 'statElapsedTime', 'statClicks',
-      'raidEvacConfig'
+      'raidEvacConfig', 'rapidReloadMax', 'enhancePriority',
+      'sidebarActiveTab'
     ], r => {
       if (!r) return;
 
@@ -1057,6 +1128,24 @@ function initSidebar() {
         if (inStage2) inStage2.value = evacConfig.stage2Layer;
         const inMax = document.getElementById('sb-cfg-max-layer');
         if (inMax) inMax.value = evacConfig.maxLayer;
+      }
+
+      // 同步快速装填最大次数变量并回填 UI
+      if (r.rapidReloadMax !== undefined) {
+        rapidReloadMax = r.rapidReloadMax;
+        const inRapidReloadMax = document.getElementById('sb-cfg-rapid-reload-max');
+        if (inRapidReloadMax) inRapidReloadMax.value = rapidReloadMax;
+      }
+
+      // 同步优先级排序设置并回填 UI
+      if (r.enhancePriority) {
+        enhancePriority = r.enhancePriority;
+      }
+      renderSidebarPriorityList();
+
+      // 同步选项卡 Tab 状态
+      if (r.sidebarActiveTab) {
+        switchTab(r.sidebarActiveTab);
       }
     });
   }
@@ -1101,6 +1190,88 @@ function initSidebar() {
   if (inStage1) inStage1.addEventListener('change', saveEvacConfig);
   if (inStage2) inStage2.addEventListener('change', saveEvacConfig);
   if (inMax) inMax.addEventListener('change', saveEvacConfig);
+
+  const inRapidReloadMax = document.getElementById('sb-cfg-rapid-reload-max');
+  const saveRapidReloadConfig = () => {
+    let rrm = parseInt(inRapidReloadMax.value, 10);
+    if (isNaN(rrm) || rrm < 0) rrm = 0;
+    if (rrm > 3) rrm = 3;
+    rapidReloadMax = rrm;
+    inRapidReloadMax.value = rrm;
+    if (isContextValid()) {
+      chrome.storage.local.set({ rapidReloadMax: rapidReloadMax });
+    }
+    log(`技能配置更新: 快速装填最大获取次数为 ${rapidReloadMax} 次`, 'info');
+  };
+  if (inRapidReloadMax) inRapidReloadMax.addEventListener('change', saveRapidReloadConfig);
+
+  // ── Handle priority drag sorting ──────────────────────────
+  const sbDragPriorityList = document.getElementById('sb-drag-priority-list');
+
+  renderSidebarPriorityList = () => {
+    if (!sbDragPriorityList || sbDragPriorityList.querySelector('.drag-item.dragging')) return;
+    sbDragPriorityList.innerHTML = enhancePriority.map(name => `
+      <div class="drag-item" draggable="true" data-name="${name}">
+        <span class="drag-handle">☰</span>
+        <span>${name}</span>
+      </div>
+    `).join('');
+    bindSidebarDragEvents(sbDragPriorityList);
+  };
+
+  const bindSidebarDragEvents = (container) => {
+    let dragEl = null;
+    container.addEventListener('dragstart', (e) => {
+      const item = e.target.closest('.drag-item');
+      if (item) {
+        dragEl = item;
+        item.classList.add('dragging');
+      }
+    });
+
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!dragEl) return;
+      const afterElement = getDragAfterElement(container, e.clientY);
+      if (afterElement == null) {
+        container.appendChild(dragEl);
+      } else {
+        container.insertBefore(dragEl, afterElement);
+      }
+    });
+
+    container.addEventListener('dragend', (e) => {
+      const item = e.target.closest('.drag-item');
+      if (item) {
+        item.classList.remove('dragging');
+      }
+      dragEl = null;
+      saveSidebarPriorityConfig();
+    });
+  };
+
+  const getDragAfterElement = (container, y) => {
+    const draggableElements = [...container.querySelectorAll('.drag-item:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+  };
+
+  const saveSidebarPriorityConfig = () => {
+    const items = [...sbDragPriorityList.querySelectorAll('.drag-item')];
+    const newPriority = items.map(item => item.getAttribute('data-name'));
+    enhancePriority = newPriority;
+    if (isContextValid()) {
+      chrome.storage.local.set({ enhancePriority: newPriority });
+    }
+    log(`技能配置更新: 二次升级优先级顺序变更为 ${newPriority.join(' ➔ ')}`, 'info');
+  };
 
   // 6. 绑定控制台主开关的勾选改变事件
   const masterSwitch = document.getElementById('sb-master-switch');
@@ -1302,6 +1473,32 @@ if (window.location.pathname.startsWith('/raid')) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'config_updated') {
     log('配置已更新', 'info');
+    // 收到配置更新消息时，拉取最新配置更新 UI
+    if (isContextValid()) {
+      chrome.storage.local.get(['raidEvacConfig', 'rapidReloadMax', 'enhancePriority'], r => {
+        if (!r) return;
+        if (r.raidEvacConfig) {
+          evacConfig = { ...evacConfig, ...r.raidEvacConfig };
+          const inStage1 = document.getElementById('sb-cfg-stage1-layer');
+          if (inStage1) inStage1.value = evacConfig.stage1Layer;
+          const inStage2 = document.getElementById('sb-cfg-stage2-layer');
+          if (inStage2) inStage2.value = evacConfig.stage2Layer;
+          const inMax = document.getElementById('sb-cfg-max-layer');
+          if (inMax) inMax.value = evacConfig.maxLayer;
+        }
+        if (r.rapidReloadMax !== undefined) {
+          rapidReloadMax = r.rapidReloadMax;
+          const inRapidReloadMax = document.getElementById('sb-cfg-rapid-reload-max');
+          if (inRapidReloadMax) inRapidReloadMax.value = rapidReloadMax;
+        }
+        if (r.enhancePriority) {
+          enhancePriority = r.enhancePriority;
+          if (typeof renderSidebarPriorityList === 'function') {
+            renderSidebarPriorityList();
+          }
+        }
+      });
+    }
     sendResponse({ status: 'ok' });
   }
   if (request.action === 'get_state') {

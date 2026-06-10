@@ -19,7 +19,7 @@
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank <span>Raid</span></h1>
       </div>
-      <div class="version-tag">v2.2.8</div>
+      <div class="version-tag">v2.2.12</div>
     </header>
 
     <!-- Main Status Card -->
@@ -62,6 +62,23 @@
         <div class="state-row">
           <span class="state-label">最近操作</span>
           <span class="state-value small" id="last-action">—</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings Section -->
+    <section class="section">
+      <h2 class="section-title">挂机设置</h2>
+      <div class="state-card">
+        <div class="state-row">
+          <span class="state-label">快速装填最大次数</span>
+          <input type="number" id="cfg-rapid-reload-max" class="sb-input-num" min="0" max="3" value="2">
+        </div>
+        <div class="state-row" style="flex-direction: column; align-items: stretch; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.05);">
+          <span class="state-label" style="margin-bottom: 4px;">二次升级优先级 (按住 ☰ 拖拽排序)</span>
+          <div class="drag-list" id="drag-priority-list">
+            <!-- 动态渲染拖放元素 -->
+          </div>
         </div>
       </div>
     </section>

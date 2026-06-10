@@ -463,3 +463,81 @@ input:checked + .slider-sm::before {
     opacity: 0;
   }
 }
+
+/* Custom input element style for settings */
+.sb-input-num {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 4px !important;
+  color: #f3f4f6 !important;
+  font-size: 0.7rem !important;
+  padding: 0 !important;
+  width: 32px !important;
+  height: 16px !important;
+  line-height: 14px !important;
+  text-align: center !important;
+  outline: none !important;
+  transition: border-color 0.2s, box-shadow 0.2s !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+}
+
+.sb-input-num::-webkit-outer-spin-button,
+.sb-input-num::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+
+.sb-input-num:focus,
+.sb-input-num:hover {
+  border-color: #0096ff !important;
+  box-shadow: 0 0 8px rgba(0, 150, 255, 0.3) !important;
+}
+
+/* 原生拖动排序样式 */
+.drag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.drag-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  font-size: 0.72rem;
+  color: var(--color-text-main);
+  cursor: grab;
+  user-select: none;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.drag-item:hover {
+  background-color: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.drag-item:active {
+  cursor: grabbing;
+}
+
+.drag-item.dragging {
+  opacity: 0.35;
+  background-color: rgba(0, 150, 255, 0.15) !important;
+  border-color: rgba(0, 150, 255, 0.35) !important;
+  box-shadow: 0 0 10px rgba(0, 150, 255, 0.25);
+}
+
+.drag-handle {
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--color-text-muted);
+  font-weight: bold;
+  cursor: grab;
+}
+
+

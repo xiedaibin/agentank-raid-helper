@@ -4,6 +4,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusDot = document.getElementById('status-dot');
   const statusText = document.getElementById('status-text');
   const statusCard = document.getElementById('status-card');
+  const rapidReloadMaxInput = document.getElementById('cfg-rapid-reload-max');
+  const dragPriorityList = document.getElementById('drag-priority-list');
+  let localEnhancePriority = ['自动护盾', '宝物磁场', '技能冷却', '开局推进'];
 
   const currentState = document.getElementById('current-state');
   const currentLayer = document.getElementById('current-layer');
@@ -34,10 +37,18 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // ── Load saved settings ───────────────────────────────────
-  chrome.storage.local.get(['masterActive'], (result) => {
+  chrome.storage.local.get(['masterActive', 'rapidReloadMax', 'enhancePriority'], (result) => {
     const active = result.masterActive !== false;
     masterSwitch.checked = active;
     updateStatusUI(active);
+
+    const maxVal = result.rapidReloadMax !== undefined ? result.rapidReloadMax : 2;
+    rapidReloadMaxInput.value = maxVal;
+
+    if (result.enhancePriority) {
+      localEnhancePriority = result.enhancePriority;
+    }
+    renderPriorityList();
   });
 
   // ── Load and display all data ─────────────────────────────
@@ -50,6 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
       'raidLastAction', 'raidBestDepth',
       'statClicks', 'statStartTime', 'statElapsedTime',
       'raidLog',
+      'rapidReloadMax',
+      'enhancePriority',
     ], (data) => {
       // Game state
       currentState.textContent = stateNames[data.raidState] || '—';
@@ -81,6 +94,16 @@ document.addEventListener('DOMContentLoaded', () => {
       // Timer
       const isMasterActive = data.masterActive !== false;
       updateTimerDisplay(data.statStartTime, data.statElapsedTime, isMasterActive);
+
+      // Settings
+      if (data.rapidReloadMax !== undefined && document.activeElement !== rapidReloadMaxInput) {
+        rapidReloadMaxInput.value = data.rapidReloadMax;
+      }
+
+      if (data.enhancePriority) {
+        localEnhancePriority = data.enhancePriority;
+        renderPriorityList();
+      }
 
       // Log
       renderLog(data.raidLog);
@@ -125,6 +148,83 @@ document.addEventListener('DOMContentLoaded', () => {
       notifyContentScript();
     });
   });
+
+  // ── Handle rapid reload limit ─────────────────────────────
+  rapidReloadMaxInput.addEventListener('change', () => {
+    let val = parseInt(rapidReloadMaxInput.value, 10);
+    if (isNaN(val) || val < 0) val = 0;
+    if (val > 3) val = 3;
+    rapidReloadMaxInput.value = val;
+
+    chrome.storage.local.set({ rapidReloadMax: val }, () => {
+      notifyContentScript();
+    });
+  });
+
+  // ── Handle priority drag sorting ──────────────────────────
+  function renderPriorityList() {
+    if (dragPriorityList.querySelector('.drag-item.dragging')) return;
+    dragPriorityList.innerHTML = localEnhancePriority.map(name => `
+      <div class="drag-item" draggable="true" data-name="${name}">
+        <span class="drag-handle">☰</span>
+        <span>${name}</span>
+      </div>
+    `).join('');
+    bindDragEvents(dragPriorityList);
+  }
+
+  function bindDragEvents(container) {
+    let dragEl = null;
+    container.addEventListener('dragstart', (e) => {
+      const item = e.target.closest('.drag-item');
+      if (item) {
+        dragEl = item;
+        item.classList.add('dragging');
+      }
+    });
+
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!dragEl) return;
+      const afterElement = getDragAfterElement(container, e.clientY);
+      if (afterElement == null) {
+        container.appendChild(dragEl);
+      } else {
+        container.insertBefore(dragEl, afterElement);
+      }
+    });
+
+    container.addEventListener('dragend', (e) => {
+      const item = e.target.closest('.drag-item');
+      if (item) {
+        item.classList.remove('dragging');
+      }
+      dragEl = null;
+      savePriorityConfig();
+    });
+  }
+
+  function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.drag-item:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+  }
+
+  function savePriorityConfig() {
+    const items = [...dragPriorityList.querySelectorAll('.drag-item')];
+    const newPriority = items.map(item => item.getAttribute('data-name'));
+    localEnhancePriority = newPriority;
+    chrome.storage.local.set({ enhancePriority: newPriority }, () => {
+      notifyContentScript();
+    });
+  }
 
   function notifyContentScript() {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
