@@ -1,5 +1,5 @@
 // ============================================================
-// Agentank Raid Helper — 状态机自动化引擎 v2.2.12
+// Agentank Raid Helper — 状态机自动化引擎 v2.2.13
 // ============================================================
 
 // 控制台常规日志开关：true 允许输出调试日志，false 统一关闭常规调试日志（console.log / console.warn）
@@ -53,6 +53,9 @@ let statClicksCount = 0;
 let statStartTime = null;
 let statElapsedTime = 0;
 let isLastStateUnknown = false; // 标记上一次探测是否是未知状态，防止诊断 Warn 刷屏
+let escapeAttempts = 0;         // 连续撤退尝试次数
+let sellAttempts = 0;           // 连续出售宝物尝试次数
+let lastSellButtonsCount = -1;  // 上一次点击出售前可见的出售按钮数量
 
 // ── 游戏运行状态数据 ───────────────────────────────────────────────
 const gameState = {
@@ -567,6 +570,14 @@ async function processAutomation() {
   // 将最新状态数据同步存储，以便 popup 控制面板刷新展示
   syncStateToStorage(detected);
 
+  if (detected.state !== 'VICTORY_CHOICE') {
+    escapeAttempts = 0;
+  }
+  if (detected.state !== 'WAREHOUSE') {
+    sellAttempts = 0;
+    lastSellButtonsCount = -1;
+  }
+
   switch (detected.state) {
 
     // ─── 出击主页面大厅 ─────────────────────────────────
@@ -694,15 +705,23 @@ async function processAutomation() {
 
       // 智能评估当前层数和命数是否满足撤退策略，若满则执行撤退落袋为安
       if (detected.canEscape && shouldEvacuate(layer, detected.enhancements)) {
-        safeClick(detected.escapeBtn, '撤离并保存');
-        gameState.totalEvacuations++;
-        log(`第${layer}层撤离! 总撤离次数: ${gameState.totalEvacuations}`, 'warn');
+        if (escapeAttempts >= 5) {
+          log(`连续撤退失败达到 ${escapeAttempts} 次，可能是服务端异常或已重启，正在重新刷新页面...`, 'error');
+          window.location.reload();
+          return POLL_SLOW;
+        }
+        if (safeClick(detected.escapeBtn, '撤离并保存')) {
+          escapeAttempts++;
+          gameState.totalEvacuations++;
+          log(`第${layer}层撤离! 总撤离次数: ${gameState.totalEvacuations}，当前连续撤退尝试次数: ${escapeAttempts}`, 'warn');
+        }
         return POLL_FAST;
       }
 
       // 否则挑选最佳的强化技能继续向上挑战
       const choice = selectEnhancement(detected.enhancements);
       if (choice) {
+        escapeAttempts = 0; // 选择强化技能继续挑战时，重置撤退失败计数
         // 更新记录当前持有的技能及其升级等级
         gameState.enhancements[choice.name] = (gameState.enhancements[choice.name] || 0) + 1;
         safeClick(choice.element, `强化: ${choice.name}`);
@@ -711,9 +730,17 @@ async function processAutomation() {
 
       // 兜底情况：无可点技能时，如果支持撤退则强制撤退
       if (detected.canEscape) {
+        if (escapeAttempts >= 5) {
+          log(`连续撤退失败达到 ${escapeAttempts} 次，可能是服务端异常或已重启，正在重新刷新页面...`, 'error');
+          window.location.reload();
+          return POLL_SLOW;
+        }
         log('无可选强化, 选择撤离', 'warn');
-        safeClick(detected.escapeBtn, '撤离并保存');
-        gameState.totalEvacuations++;
+        if (safeClick(detected.escapeBtn, '撤离并保存')) {
+          escapeAttempts++;
+          gameState.totalEvacuations++;
+          log(`强制撤退! 总撤离次数: ${gameState.totalEvacuations}，当前连续撤退尝试次数: ${escapeAttempts}`, 'warn');
+        }
         return POLL_FAST;
       }
 
@@ -765,24 +792,68 @@ async function processAutomation() {
  * @returns {number} 下一次轮询的延迟（毫秒）
  */
 function handleWarehouse() {
-  // 1. 扫描页面中所有的可见按钮，自动将带有“全部出售”字样的宝物依次卖完
   const buttons = document.querySelectorAll('button');
+  
+  // 找出所有可见的出售按钮
+  const sellButtons = [];
   for (const btn of buttons) {
-    if (isVisible(btn) && btn.textContent.trim().includes('全部出售')) {
-      log('出售仓库宝物(全部)', 'action');
-      safeClick(btn, '全部出售');
-      return POLL_FAST; // 每次执行一次点击并快速进入下一次轮询，确保依次售出
+    if (isVisible(btn) && (btn.textContent.trim().includes('全部出售') || btn.textContent.trim().startsWith('出售'))) {
+      sellButtons.push(btn);
     }
+  }
+  
+  const currentSellButtonsCount = sellButtons.length;
+
+  if (currentSellButtonsCount > 0) {
+    // 如果之前有点击过，且按钮数量没有减少
+    if (lastSellButtonsCount !== -1) {
+      if (currentSellButtonsCount === lastSellButtonsCount) {
+        sellAttempts++;
+        log(`点击出售后按钮数量未减少，当前连续失败尝试: ${sellAttempts} 次`, 'warn');
+      } else {
+        sellAttempts = 0;
+      }
+    }
+
+    if (sellAttempts >= 5) {
+      log(`连续出售失败达到 ${sellAttempts} 次，可能是服务端异常或已重启，正在重新刷新页面...`, 'error');
+      window.location.reload();
+      return POLL_SLOW;
+    }
+
+    // 寻找最优先的出售按钮执行点击
+    // 1. 优先点击“全部出售”
+    let targetBtn = null;
+    for (const btn of sellButtons) {
+      if (btn.textContent.trim().includes('全部出售')) {
+        targetBtn = btn;
+        break;
+      }
+    }
+    // 2. 兜底点击单个“出售”
+    if (!targetBtn) {
+      for (const btn of sellButtons) {
+        if (btn.textContent.trim().startsWith('出售')) {
+          targetBtn = btn;
+          break;
+        }
+      }
+    }
+
+    if (targetBtn) {
+      const isAll = targetBtn.textContent.trim().includes('全部出售');
+      const actionName = isAll ? '全部出售' : '出售宝物';
+      if (safeClick(targetBtn, actionName)) {
+        lastSellButtonsCount = currentSellButtonsCount;
+        return POLL_FAST;
+      }
+    }
+    return POLL_FAST;
   }
 
-  // 兜底支持点击单个“出售”按钮
-  for (const btn of buttons) {
-    if (isVisible(btn) && btn.textContent.trim().startsWith('出售')) {
-      log('出售单个宝物', 'action');
-      safeClick(btn, '出售宝物');
-      return POLL_FAST;
-    }
-  }
+  // 没有出售按钮，重置相关计数器
+  sellAttempts = 0;
+  lastSellButtonsCount = -1;
 
   // 2. 刷新当前的资产余额（星星数、星屑数）
   const stars = readNumber($('raidHeaderStarBalance'));
@@ -910,7 +981,7 @@ function initSidebar() {
         <span class="logo-glow"></span>
         <h1 class="logo-text">Agentank Raid <span>Helper</span></h1>
       </div>
-      <div class="version-tag">v2.2.12</div>
+      <div class="version-tag">v2.2.13</div>
     </header>
     <div class="status-card ${isMasterActive ? 'active-state' : ''}" id="sb-status-card">
       <div class="status-indicator">

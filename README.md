@@ -1,6 +1,6 @@
 # 🤖 AgenTank Raid Helper (坦克出击 Raid 挂机助手)
 
-[![Version](https://img.shields.io/badge/version-2.2.12-blue.svg)](https://github.com/xiedaibin/agentank-raid-helper)
+[![Version](https://img.shields.io/badge/version-2.2.13-blue.svg)](https://github.com/xiedaibin/agentank-raid-helper)
 [![Platform](https://img.shields.io/badge/platform-Chrome%20Extension%20v3-green.svg)](https://chrome.google.com/)
 
 **AgenTank Raid Helper** 是一款专门针对 `https://agentank.ai/raid` 出击模式设计的智能全自动挂机 Chrome 浏览器插件（基于 Chrome Extension Manifest V3 标准开发）。
