@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ], (data) => {
       // Game state
       currentState.textContent = stateNames[data.raidState] || '—';
-      currentLayer.textContent = data.raidLayer+1 || 0;
+      currentLayer.textContent = data.raidLayer+1 || 1;
       currentStars.textContent = data.raidStars ?? 0;
       currentDust.textContent = data.raidDust ?? 0;
       lastAction.textContent = data.raidLastAction || '—';
