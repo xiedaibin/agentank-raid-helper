@@ -1012,7 +1012,7 @@ function initSidebar() {
           </div>
           <div class="state-row">
             <span class="state-label">当前层数</span>
-            <span class="state-value highlight" id="sb-current-layer">0</span>
+            <span class="state-value highlight" id="sb-current-layer">1</span>
           </div>
           <div class="state-row">
             <span class="state-label">⭐ 星星</span>
@@ -1411,7 +1411,7 @@ function updateSidebarUI(detected) {
 
   // 当前层数
   const layerEl = document.getElementById('sb-current-layer');
-  if (layerEl) layerEl.textContent = gameState.currentLayer;
+  if (layerEl) layerEl.textContent = gameState.currentLayer + 1;
 
   // 星星与星屑
   const starsEl = document.getElementById('sb-current-stars');
